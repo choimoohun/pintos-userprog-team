@@ -24,7 +24,12 @@
 - 자동 포맷 금지 (원본 코드 재포맷으로 인한 diff 폭발 방지). 설정은 `.vscode/settings.json` 참고.
 
 ### 기준선 (수정 전 테스트 결과)
-- 측정 후 기록 예정
+측정 환경: Windows + WSL2(Ubuntu) + Dev Container, `pintos/threads/build`에서 `make check`
+
+- 결과: **7 pass / 20 FAIL** (총 27개), 소요 시간 약 16분
+- pass: `alarm-single`, `alarm-multiple`, `alarm-simultaneous`, `alarm-zero`, `alarm-negative`, `mlfqs-fair-2`, `mlfqs-fair-20`
+- ⚠️ `mlfqs-fair-2`, `mlfqs-fair-20`은 기본 상태에서 통과하므로, 구현 중 실패로 바뀌지 않는지 회귀 확인 필요
+- Mac 환경 결과: 측정 후 추가
 
 ---
 
