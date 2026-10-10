@@ -28,6 +28,9 @@
    that are ready to run but not actually running. */
 static struct list ready_list;
 
+/* 잠든 스레드 목록, wakeup_tick 오름차순. */
+static struct list sleep_list;
+
 /* Idle thread. */
 static struct thread *idle_thread;
 
@@ -108,6 +111,7 @@ thread_init (void) {
 	/* Init the globla thread context */
 	lock_init (&tid_lock);
 	list_init (&ready_list);
+	list_init (&sleep_list);
 	list_init (&destruction_req);
 
 	/* Set up a thread structure for the running thread. */
@@ -243,6 +247,53 @@ thread_unblock (struct thread *t) {
 	list_push_back (&ready_list, &t->elem);
 	t->status = THREAD_READY;
 	intr_set_level (old_level);
+}
+
+/* list_insert_ordered()용 비교 함수.
+   A의 wakeup_tick이 B보다 작으면 true를 반환한다.
+   같으면 false라서, 기상 틱이 같은 스레드는 먼저 잠든 순서를 유지한다. */
+static bool
+wakeup_tick_less (const struct list_elem *a, const struct list_elem *b,
+		void *aux UNUSED) {
+	struct thread *ta = list_entry (a, struct thread, elem);
+	struct thread *tb = list_entry (b, struct thread, elem);
+
+	return ta->wakeup_tick < tb->wakeup_tick;
+}
+
+/* 현재 스레드를 WAKEUP_TICK까지 재운다.
+   sleep_list에 wakeup_tick 오름차순으로 넣고 block한다.
+   깨우는 쪽은 thread_wakeup()이다. sleep_list를 타이머 인터럽트와
+   함께 쓰므로, 삽입부터 block까지 인터럽트를 끈 채로 진행한다. */
+void
+thread_sleep (int64_t wakeup_tick) {
+	struct thread *curr = thread_current ();
+	enum intr_level old_level;
+
+	curr->wakeup_tick = wakeup_tick;
+
+	old_level = intr_disable ();
+	list_insert_ordered (&sleep_list, &curr->elem, wakeup_tick_less, NULL);
+	thread_block ();
+	intr_set_level (old_level);
+}
+
+/* 타이머 인터럽트에서 매 틱 호출된다.
+   sleep_list 앞에서부터 wakeup_tick <= CURRENT_TICK인 스레드를 꺼내 unblock한다.
+   리스트가 오름차순이라 아직 깰 때가 아닌 스레드를 만나면 멈춘다.
+   elem을 ready_list에서 재사용하므로 반드시 리스트에서 뺀 뒤 unblock한다. */
+void
+thread_wakeup (int64_t current_tick) {
+	while (!list_empty (&sleep_list)) {
+		struct thread *t =
+			list_entry (list_front (&sleep_list), struct thread, elem);
+
+		if (t->wakeup_tick > current_tick)
+			break;
+
+		list_pop_front (&sleep_list);
+		thread_unblock (t);
+	}
 }
 
 /* Returns the name of the running thread. */
