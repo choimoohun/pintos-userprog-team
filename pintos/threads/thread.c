@@ -250,8 +250,8 @@ thread_unblock (struct thread *t) {
 }
 
 /* list_insert_ordered()용 비교 함수.
-   A의 wakeup_tick이 B보다 작으면 true를 반환한다.
-   같으면 false라서, 기상 틱이 같은 스레드는 먼저 잠든 순서를 유지한다. */
+   A의 wakeup_tick이 B보다 작으면 true, 같거나 크면 false를 반환한다.
+   같을 때 false이므로, 기상 틱이 같은 스레드는 먼저 잠든 순서대로 놓인다. */
 static bool
 wakeup_tick_less (const struct list_elem *a, const struct list_elem *b,
 		void *aux UNUSED) {
