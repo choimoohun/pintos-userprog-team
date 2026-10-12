@@ -262,6 +262,18 @@ wakeup_tick_less (const struct list_elem *a, const struct list_elem *b,
 	return ta->wakeup_tick < tb->wakeup_tick;
 }
 
+/* list_max()용 비교 함수.
+   A의 priority가 B보다 작으면 true, 같거나 크면 false를 반환한다.
+   같을 때 false이므로, 우선순위가 같으면 리스트 앞쪽(먼저 들어온) 스레드가 골라진다. */
+bool
+priority_less (const struct list_elem *a, const struct list_elem *b,
+		void *aux UNUSED) {
+	struct thread *ta = list_entry (a, struct thread, elem);
+	struct thread *tb = list_entry (b, struct thread, elem);
+
+	return ta->priority < tb->priority;
+}
+
 /* 현재 스레드를 WAKEUP_TICK까지 재운다.
    sleep_list에 wakeup_tick 오름차순으로 넣고 block한다.
    깨우는 쪽은 thread_wakeup()이다. sleep_list를 타이머 인터럽트와
