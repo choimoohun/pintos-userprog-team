@@ -511,13 +511,20 @@ init_thread (struct thread *t, const char *name, int priority) {
    return a thread from the run queue, unless the run queue is
    empty.  (If the running thread can continue running, then it
    will be in the run queue.)  If the run queue is empty, return
-   idle_thread. */
+   idle_thread. 
+   
+   ready list에서 우선순위가 가장 높은 스레드를 고른다(list_max + priority_less)
+   우선순위가 같으면 먼저 들어온 스레드가 골라진다.  */
 static struct thread *
 next_thread_to_run (void) {
 	if (list_empty (&ready_list))
 		return idle_thread;
-	else
-		return list_entry (list_pop_front (&ready_list), struct thread, elem);
+	else {
+		struct list_elem *high_elem = list_max (&ready_list, priority_less, NULL);
+		list_remove (high_elem);
+
+		return list_entry (high_elem, struct thread, elem);
+	}
 }
 
 /* Use iretq to launch the thread */
