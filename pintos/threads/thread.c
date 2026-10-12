@@ -211,6 +211,7 @@ thread_create (const char *name, int priority,
 
 	/* Add to run queue. */
 	thread_unblock (t);
+	thread_yield_to_higher ();
 
 	return tid;
 }
@@ -314,6 +315,8 @@ thread_wakeup (int64_t current_tick) {
 		list_pop_front (&sleep_list);
 		thread_unblock (t);
 	}
+
+	thread_yield_to_higher ();
 }
 
 /* Returns the name of the running thread. */
@@ -408,6 +411,7 @@ thread_yield_to_higher (void) {
 void
 thread_set_priority (int new_priority) {
 	thread_current ()->priority = new_priority;
+	thread_yield_to_higher ();
 }
 
 /* Returns the current thread's priority. */
