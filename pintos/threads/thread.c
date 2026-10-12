@@ -270,6 +270,10 @@ thread_sleep (int64_t wakeup_tick) {
 	struct thread *curr = thread_current ();
 	enum intr_level old_level;
 
+	ASSERT (!intr_context ());
+	ASSERT (intr_get_level () == INTR_ON);
+	ASSERT (curr != idle_thread);
+
 	curr->wakeup_tick = wakeup_tick;
 
 	old_level = intr_disable ();
@@ -284,6 +288,9 @@ thread_sleep (int64_t wakeup_tick) {
    elem을 ready_list에서 재사용하므로 반드시 리스트에서 뺀 뒤 unblock한다. */
 void
 thread_wakeup (int64_t current_tick) {
+	ASSERT (intr_context ());
+	ASSERT (intr_get_level () == INTR_OFF);
+
 	while (!list_empty (&sleep_list)) {
 		struct thread *t =
 			list_entry (list_front (&sleep_list), struct thread, elem);

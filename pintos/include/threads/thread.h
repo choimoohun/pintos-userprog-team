@@ -127,7 +127,12 @@ tid_t thread_create (const char *name, int priority, thread_func *, void *);
 void thread_block (void);
 void thread_unblock (struct thread *);
 
+/* timer_sleep()에서만 호출한다.
+   인터럽트가 켜진 스레드 문맥에서 불려야 한다. */
 void thread_sleep (int64_t wakeup_tick);
+
+/* timer_interrupt()에서만 호출한다.
+   인터럽트 핸들러 안에서 불려야 한다. */
 void thread_wakeup (int64_t current_tick);
 
 struct thread *thread_current (void);
