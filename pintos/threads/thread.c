@@ -379,6 +379,31 @@ thread_yield (void) {
 	intr_set_level (old_level);
 }
 
+/* ready list에 지금 스레드보다 우선순위가 높은 스레드가 있으면 양보한다.
+   같으면 양보하지 않는다.
+   핸들러 안에서는 intr_yield_on_return (), 밖에서는 thread_yield ()로 양보한다.
+   ready list에 스레드를 넣거나 우선순위를 바꾼 뒤 부른다. */
+void
+thread_yield_to_higher (void) {
+	struct thread *curr = thread_current ();
+	enum intr_level old_level;
+
+	old_level = intr_disable ();
+
+	if (!list_empty (&ready_list)) {
+		struct list_elem *high_elem = list_max (&ready_list, priority_less, NULL);
+
+		if (priority_less (&curr->elem, high_elem, NULL)) {
+			if (intr_context ())
+				intr_yield_on_return ();
+			else
+				thread_yield ();
+		}
+	}
+
+	intr_set_level (old_level);
+}
+
 /* Sets the current thread's priority to NEW_PRIORITY. */
 void
 thread_set_priority (int new_priority) {
