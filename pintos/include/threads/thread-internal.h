@@ -14,4 +14,5 @@ void thread_sleep (int64_t wakeup_tick);
    인터럽트 핸들러 안에서 불려야 한다. */
 void thread_wakeup (int64_t current_tick);
 
-#endif /* threads/thread-internal.h */
+#endif 
+/* threads/thread-internal.h */
