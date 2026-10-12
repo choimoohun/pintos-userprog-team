@@ -109,11 +109,15 @@ sema_up (struct semaphore *sema) {
 	ASSERT (sema != NULL);
 
 	old_level = intr_disable ();
-	if (!list_empty (&sema->waiters))
-		thread_unblock (list_entry (list_pop_front (&sema->waiters),
+	if (!list_empty (&sema->waiters)) {
+		struct list_elem *high_elem = list_max (&sema->waiters, priority_less, NULL);
+		list_remove (high_elem);
+		thread_unblock (list_entry (high_elem,
 					struct thread, elem));
+	}
 	sema->value++;
 	intr_set_level (old_level);
+	thread_yield_to_higher ();
 }
 
 static void sema_test_helper (void *sema_);
