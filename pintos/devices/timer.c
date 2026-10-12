@@ -7,6 +7,7 @@
 #include "threads/io.h"
 #include "threads/synch.h"
 #include "threads/thread.h"
+#include "threads/thread-internal.h"
 
 /* See [8254] for hardware details of the 8254 timer chip. */
 

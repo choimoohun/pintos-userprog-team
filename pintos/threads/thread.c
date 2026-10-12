@@ -1,4 +1,5 @@
 #include "threads/thread.h"
+#include "threads/thread-internal.h"
 #include <debug.h>
 #include <stddef.h>
 #include <random.h>
