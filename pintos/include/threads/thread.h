@@ -143,6 +143,7 @@ void thread_yield_to_higher (void);
 int thread_get_priority (void);
 void thread_set_priority (int);
 void thread_donate_priority (struct thread *t, int p);
+void thread_refresh_priority (void);
 bool priority_less (const struct list_elem *a, const struct list_elem *b, void *aux);
 
 int thread_get_nice (void);

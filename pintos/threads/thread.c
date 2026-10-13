@@ -428,10 +428,31 @@ thread_donate_priority (struct thread *t, int p) {
 	}
 }
 
+void 
+thread_refresh_priority (void) {
+	struct thread *curr = thread_current ();
+	struct list_elem *e;
+	
+	curr->priority = curr->base_priority;
+
+	for (e = list_begin (&curr->locks); e != list_end (&curr->locks); e = list_next (e)) {
+		struct lock *lock = list_entry (e, struct lock, elem);
+
+		if (!list_empty (&lock->semaphore.waiters)) {
+			struct list_elem *high_elem = list_max (&lock->semaphore.waiters, priority_less, NULL);
+			struct thread *high = list_entry (high_elem, struct thread, elem);
+
+			if (high->priority > curr->priority)
+				curr->priority = high->priority;
+		}
+	}
+}
+
 /* Sets the current thread's priority to NEW_PRIORITY. */
 void
 thread_set_priority (int new_priority) {
-	thread_current ()->priority = new_priority;
+	thread_current ()->base_priority = new_priority;
+	thread_refresh_priority ();
 	thread_yield_to_higher ();
 }
 
