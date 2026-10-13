@@ -9,6 +9,7 @@
 #include "vm/vm.h"
 #endif
 
+struct lock;
 
 /* States in a thread's life cycle. */
 enum thread_status {
@@ -92,6 +93,10 @@ struct thread {
 	char name[16];                      /* Name (for debugging purposes). */
 	int priority;                       /* Priority. */
 
+	int base_priority;					/* 원래 우선순위. */
+	struct lock *waiting_lock;			/* 내가 기다리는 lock. */
+	struct list locks;					/* 내가 들고 있는 lock 목록. */
+
 	/* Shared between thread.c and synch.c. */
 	struct list_elem elem;              /* List element. */
 
@@ -137,6 +142,7 @@ void thread_yield_to_higher (void);
 
 int thread_get_priority (void);
 void thread_set_priority (int);
+void thread_donate_priority (struct thread *t, int p);
 bool priority_less (const struct list_elem *a, const struct list_elem *b, void *aux);
 
 int thread_get_nice (void);

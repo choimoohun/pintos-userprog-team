@@ -407,6 +407,27 @@ thread_yield_to_higher (void) {
 	intr_set_level (old_level);
 }
 
+void
+thread_donate_priority (struct thread *t, int p) {
+	int depth = 0;
+
+	while (depth < 8 && t != NULL)
+	{
+		if (t->priority >= p) {
+			break;
+		}
+
+		t->priority = p;
+
+		if (t->waiting_lock == NULL) {
+			break;
+		}
+
+		t = t->waiting_lock->holder;
+		depth++;
+	}
+}
+
 /* Sets the current thread's priority to NEW_PRIORITY. */
 void
 thread_set_priority (int new_priority) {
@@ -508,6 +529,9 @@ init_thread (struct thread *t, const char *name, int priority) {
 	strlcpy (t->name, name, sizeof t->name);
 	t->tf.rsp = (uint64_t) t + PGSIZE - sizeof (void *);
 	t->priority = priority;
+	t->base_priority = priority;
+	t->waiting_lock = NULL;
+	list_init (&t->locks);
 	t->magic = THREAD_MAGIC;
 }
 

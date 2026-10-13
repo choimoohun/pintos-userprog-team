@@ -8,6 +8,7 @@
 struct semaphore {
 	unsigned value;             /* Current value. */
 	struct list waiters;        /* List of waiting threads. */
+	struct list_elem elem;			/* holder의 locks 리스트에 들어갈 때 쓰는 elem. */
 };
 
 void sema_init (struct semaphore *, unsigned value);
