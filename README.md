@@ -1,38 +1,3 @@
-# Pintos Threads Team
-
-> ⚠️ **수료 후 이 레포는 반드시 Private으로 전환합니다.** (Pintos 라이센스 룰)
->
-> 📝 아래 팀 규칙은 초안이며, 첫 팀 회의에서 확정합니다.
-
-## 팀 규칙 (초안)
-
-### 코드 관리
-- 팀 레포를 각자 **fork**해서 작업하고, 매일 커밋 이력을 남긴다.
-- clone할 때 폴더 이름은 반드시 `pintos_22.04_lab_docker`로 유지한다. (컨테이너 activate 경로)
-- `master`에는 **PR로만** 병합한다. 병합은 매일 코어타임에 리뷰 후 진행한다.
-- 각자 구현한 코드(병합되지 않은 브랜치 포함)는 **삭제하지 않고** fork에 남긴다.
-- 병합 후에는 전원이 자기 fork에 `upstream/master`를 바로 반영한다.
-
-### PR 병합 조건
-- PR 본문에 통과한 테스트 목록을 적는다.
-- 작성자가 아닌 팀원이 코드를 설명할 수 있어야 병합한다.
-- 병합 직후 master에서 threads 전체 테스트를 실행하고, 통과 수가 줄면 그날 안에 해결한다.
-
-### 맨몸 코딩 규칙 (WEEK1~10)
-- AI 코딩 에이전트, Copilot, IDE 자동완성 사용 금지. 구현 코드는 직접 작성한다.
-- 개념 학습, 코드 분석, 문법 확인, 디버깅에는 AI를 활용할 수 있다.
-- 자동 포맷 금지 (원본 코드 재포맷으로 인한 diff 폭발 방지). 설정은 `.vscode/settings.json` 참고.
-
-### 기준선 (수정 전 테스트 결과)
-측정 환경: Windows + WSL2(Ubuntu) + Dev Container, `pintos/threads/build`에서 `make check`
-
-- 결과: **7 pass / 20 FAIL** (총 27개), 소요 시간 약 16분
-- pass: `alarm-single`, `alarm-multiple`, `alarm-simultaneous`, `alarm-zero`, `alarm-negative`, `mlfqs-fair-2`, `mlfqs-fair-20`
-- ⚠️ `mlfqs-fair-2`, `mlfqs-fair-20`은 기본 상태에서 통과하므로, 구현 중 실패로 바뀌지 않는지 회귀 확인 필요
-- Mac 환경 결과: 측정 후 추가
-
----
-
 # 📘 Docker기반 Pintos 개발 환경 구축 가이드 
 
 이 문서는 **Windows**와 **macOS** 사용자가 Docker와 VSCode DevContainer 기능을 활용하여 Pintos OS 프로젝트를 빠르게 구축할 수 있도록 도와줍니다.
