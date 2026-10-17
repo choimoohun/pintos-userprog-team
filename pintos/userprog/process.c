@@ -53,8 +53,20 @@ process_create_initd (const char *file_name) {
 		return TID_ERROR;
 	strlcpy (fn_copy, file_name, PGSIZE);
 
+	/* 스레드 이름은 첫 단어(프로그램 이름)만 쓴다. 
+	exec 후에도 바뀌지 않도록 여기서 한 번만 정한다. */
+	char name[16];
+
+	strlcpy (name, file_name, sizeof name);
+
+	char *first_space = strchr (name, ' ');
+
+	if (first_space != NULL) {
+		*first_space = '\0';
+	}
+
 	/* Create a new thread to execute FILE_NAME. */
-	tid = thread_create (file_name, PRI_DEFAULT, initd, fn_copy);
+	tid = thread_create (name, PRI_DEFAULT, initd, fn_copy);
 	if (tid == TID_ERROR)
 		palloc_free_page (fn_copy);
 	return tid;
