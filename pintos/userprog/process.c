@@ -23,8 +23,10 @@
 #include "vm/vm.h"
 #endif
 
+#define WORD_SIZE 64
+
 static void process_cleanup (void);
-static bool load (const char *file_name, struct intr_frame *if_);
+static bool load (const char *file_name, char *words[], int argc, struct intr_frame *if_);
 static void initd (void *f_name);
 static void __do_fork (void *);
 
@@ -166,6 +168,19 @@ process_exec (void *f_name) {
 	char *file_name = f_name;
 	bool success;
 
+	char *word;				/* strtok_r이 돌려준 지금 자른 단어의 주소. */
+	char *word_pointer;		/* strtok_r이 어디까지 잘랐는지 기억하는 칸. */
+	char *words[WORD_SIZE];	/* 자른 단어 주소들을 차례로 담는 배열. */
+	int argc = 0;			/* 단어 개수. */
+
+	word = strtok_r (f_name," ", &word_pointer);
+	
+	while (word != NULL && argc < WORD_SIZE) {
+		words[argc] = word;
+		argc++;
+		word = strtok_r (NULL," ", &word_pointer);
+	}
+	
 	/* We cannot use the intr_frame in the thread structure.
 	 * This is because when current thread rescheduled,
 	 * it stores the execution information to the member. */
@@ -178,7 +193,7 @@ process_exec (void *f_name) {
 	process_cleanup ();
 
 	/* And then load the binary */
-	success = load (file_name, &_if);
+	success = load (words[0], words, argc, &_if);
 
 	/* If load failed, quit. */
 	palloc_free_page (file_name);
@@ -316,6 +331,7 @@ struct ELF64_PHDR {
 #define Phdr ELF64_PHDR
 
 static bool setup_stack (struct intr_frame *if_);
+static void push_arguments (char *words[], int argc, struct intr_frame *if_);
 static bool validate_segment (const struct Phdr *, struct file *);
 static bool load_segment (struct file *file, off_t ofs, uint8_t *upage,
 		uint32_t read_bytes, uint32_t zero_bytes,
@@ -326,7 +342,7 @@ static bool load_segment (struct file *file, off_t ofs, uint8_t *upage,
  * and its initial stack pointer into *RSP.
  * Returns true if successful, false otherwise. */
 static bool
-load (const char *file_name, struct intr_frame *if_) {
+load (const char *file_name, char *words[], int argc, struct intr_frame *if_) {
 	struct thread *t = thread_current ();
 	struct ELF ehdr;
 	struct file *file = NULL;
@@ -419,8 +435,7 @@ load (const char *file_name, struct intr_frame *if_) {
 	/* Start address. */
 	if_->rip = ehdr.e_entry;
 
-	/* TODO: Your code goes here.
-	 * TODO: Implement argument passing (see project2/argument_passing.html). */
+	push_arguments (words, argc, if_);
 
 	success = true;
 
@@ -428,6 +443,40 @@ done:
 	/* We arrive here whether the load is successful or not. */
 	file_close (file);
 	return success;
+}
+
+/* 명령줄에서 나눈 단어들을 사용자 스택에 쌓고,
+   main(argc, argv)가 받을 수 있도록 레지스터를 맞춘다. */
+static void 
+push_arguments (char *words[], int argc, struct intr_frame *if_) {
+	uintptr_t user_words[WORD_SIZE];	/* 사용자 스택에 복사한 단어들의 주소. */
+	
+	/* 1. 단어 글자들을 마지막 단어부터 복사한다. */
+	for (int i = argc - 1; i >= 0; i--) {
+		int len = strlen (words[i]) + 1;
+		if_->rsp -= len;
+		memcpy ((void *) if_->rsp, words[i], len);
+		user_words[i] = if_->rsp;
+	}
+	/* 2. rsp를 8의 배수로 내린다. */
+	if_->rsp = ROUND_DOWN(if_->rsp, 8);
+
+	/* 3. NULL과 argv 주소들을 넣는다. */
+	if_->rsp -= 8;
+	*(uintptr_t *) if_->rsp = 0;
+
+	for (int i = argc - 1; i >= 0; i--) {
+		/* rsp를 8 빼고, 그 자리에 user_words[i]를 쓴다. */
+		if_->rsp -= 8;
+		*(uintptr_t *) if_->rsp = user_words[i];
+	}
+
+	if_->R.rsi = if_->rsp;
+
+	/* 4. 가짜 return address를 넣고 레지스터를 맞춘다. */
+	if_->rsp -= 8;
+	*(uintptr_t *) if_->rsp = 0;
+	if_->R.rdi = argc;
 }
 
 
