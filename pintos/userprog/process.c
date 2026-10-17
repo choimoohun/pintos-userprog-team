@@ -23,8 +23,12 @@
 #include "vm/vm.h"
 #endif
 
+#define MAX_ARG 6
+#define MAX_STRLEN 14
+
 static void process_cleanup (void);
 static bool load (const char *file_name, struct intr_frame *if_);
+static bool parse_argument (const char *file_name, struct intr_frame *if_, char* out);
 static void initd (void *f_name);
 static void __do_fork (void *);
 
@@ -340,10 +344,19 @@ load (const char *file_name, struct intr_frame *if_) {
 		goto done;
 	process_activate (thread_current ());
 
+	/* Set up stack. */
+	if (!setup_stack (if_))
+		goto done;
+
+	// 파일 이름은 최대 14글자
+	char out[15] = "";
+	if (!parse_argument(file_name, if_, out))
+		goto done;
+
 	/* Open executable file. */
-	file = filesys_open (file_name);
+	file = filesys_open (out);
 	if (file == NULL) {
-		printf ("load: %s: open failed\n", file_name);
+		printf ("load: %s: open failed\n", out);
 		goto done;
 	}
 
@@ -355,7 +368,7 @@ load (const char *file_name, struct intr_frame *if_) {
 			|| ehdr.e_version != 1
 			|| ehdr.e_phentsize != sizeof (struct Phdr)
 			|| ehdr.e_phnum > 1024) {
-		printf ("load: %s: error loading executable\n", file_name);
+		printf ("load: %s: error loading executable\n", out);
 		goto done;
 	}
 
@@ -412,17 +425,10 @@ load (const char *file_name, struct intr_frame *if_) {
 		}
 	}
 
-	/* Set up stack. */
-	if (!setup_stack (if_))
-		goto done;
-
 	/* Start address. */
 	if_->rip = ehdr.e_entry;
 
-	/* TODO: Your code goes here.
-	 * TODO: Implement argument passing (see project2/argument_passing.html). */
-
-	success = true;
+    success = true;
 
 done:
 	/* We arrive here whether the load is successful or not. */
@@ -430,6 +436,78 @@ done:
 	return success;
 }
 
+// 파일 이름과 인자를 분리하여 out으로 반환합니다.
+// 사용자 스택에 문자열을 추가하고 레지스터를 설정하는 과정이 포함되어 있습니다.
+static bool
+parse_argument(const char *file_name, struct intr_frame *if_, char *out) {
+    // 레지스터에 넣을 임시 변수
+    uint64_t argc = 0;
+    char *argv[MAX_ARG];
+
+	char *cmd = palloc_get_page (0);
+	if (!cmd) {
+		palloc_free_page (cmd);
+		return false;
+	}
+	
+	// 인자를 포함한 파일 이름 전체 복사
+	strlcpy(cmd, file_name, PGSIZE);
+
+    // 유저 스택에 문자열을 복사
+    char *token, *save_ptr;
+    for (token = strtok_r(cmd, " ", &save_ptr); token != NULL;
+         token = strtok_r(NULL, " ", &save_ptr)) {
+		// 인자가 너무 많으면 실패
+		if (argc >= MAX_ARG) {
+			palloc_free_page (cmd);
+			return false;
+		}
+		
+        size_t len = strlen (token) + 1;
+
+		// 바로 반환하면 파일 이름이 길다는 의미
+		if (argc == 0) {
+			if (strlen(token) >= MAX_STRLEN) {
+				palloc_free_page (cmd);
+				return false;
+			}
+
+			strlcpy(out, token, MAX_STRLEN + 1);
+		}
+
+        if_->rsp -= len;
+        memcpy ((void *) if_->rsp, token, len);
+
+        argv[argc] = (char *) if_->rsp;
+        argc++;
+    }
+
+    // 8바이트 정렬
+    if_->rsp &= ~0x7ULL;
+
+    // 배열의 끝을 나타내는 NULL 포인터
+    if_->rsp -= sizeof (char *);
+    *(char **) if_->rsp = NULL;
+
+    // argv[]에 역순으로 주소 넣기
+    for (size_t i = argc; i > 0; i--)
+    {
+        if_->rsp -= sizeof (char *);
+        *(char **) if_->rsp = argv[i - 1];
+    }
+
+    // 레지스터 설정
+    if_->R.rsi = if_->rsp;
+    if_->R.rdi = argc;
+
+    // 가짜 반환 주소
+    if_->rsp -= sizeof (void *);
+    *(char **) if_->rsp = NULL;
+
+	palloc_free_page (cmd);
+
+	return true;
+}
 
 /* Checks whether PHDR describes a valid, loadable segment in
  * FILE and returns true if so, false otherwise. */
