@@ -16,6 +16,7 @@
 #include "threads/palloc.h"
 #include "threads/thread.h"
 #include "threads/mmu.h"
+#include "devices/timer.h"
 #include "threads/vaddr.h"
 #include "intrinsic.h"
 #ifdef VM
@@ -190,20 +191,24 @@ process_exec (void *f_name) {
 }
 
 
-/* Waits for thread TID to die and returns its exit status.  If
- * it was terminated by the kernel (i.e. killed due to an
- * exception), returns -1.  If TID is invalid or if it was not a
- * child of the calling process, or if process_wait() has already
- * been successfully called for the given TID, returns -1
- * immediately, without waiting.
- *
- * This function will be implemented in problem 2-2.  For now, it
- * does nothing. */
+/* 스레드 TID가 끝날 때까지 기다리고, 
+그 스레드의 종료 상태(exit status)를 돌려준다.
+만약 그 스레드가 커널에 의해 강제로 끝났다면(예: 예외 때문에 죽었다면) -1을 돌려준다.
+
+만약 TID가 잘못된 값이거나, 호출한 프로세스의 자식이 아니거나, 
+그 TID에 대해 process_wait()이 이미 한 번 성공적으로 불렸다면, 
+기다리지 않고 즉시 -1을 돌려준다.
+
+이 함수는 problem 2-2에서 구현한다. 지금은 아무 일도 하지 않는다. */
 int
 process_wait (tid_t child_tid UNUSED) {
-	/* XXX: Hint) The pintos exit if process_wait (initd), we recommend you
-	 * XXX:       to add infinite loop here before
-	 * XXX:       implementing the process_wait. */
+	/* process_wait(initd)에서 기다리지 않으면 Pintos가 그냥 꺼져 버린다. 
+	그러니 진짜 process_wait를 구현하기 전에, 
+	여기에 무한 반복(infinite loop)을 넣어 두는 걸 추천한다. */
+
+	/* 임시 코드 (S1): 자식이 끝날 시간을 주려고 100틱 잠든다.
+   S8~S11에서 세마포어로 자식 종료를 기다리도록 바꾼다. */
+	timer_sleep (100);
 	return -1;
 }
 
