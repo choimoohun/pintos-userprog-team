@@ -6,6 +6,7 @@
 #include "threads/loader.h"
 #include "userprog/gdt.h"
 #include "threads/flags.h"
+#include "threads/init.h"
 #include "intrinsic.h"
 
 void syscall_entry (void);
@@ -50,7 +51,7 @@ syscall_handler (struct intr_frame *f) {
 			break;
 		case SYS_WRITE:
 			if ((int) f->R.rdi == 1) {
-				const void *buffer = (const void *) f->R.rsi;
+				const char *buffer = (const char *) f->R.rsi;
 				size_t size = (size_t) f->R.rdx;
 				// TODO: 잘못된 버퍼 접근 방지
 				putbuf (buffer, size);
