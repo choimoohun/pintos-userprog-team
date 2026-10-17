@@ -23,7 +23,7 @@
 #include "vm/vm.h"
 #endif
 
-#define MAX_ARG 6
+#define MAX_ARG 64
 #define MAX_STRLEN 14
 
 static void process_cleanup (void);
@@ -349,7 +349,7 @@ load (const char *file_name, struct intr_frame *if_) {
 		goto done;
 
 	// 파일 이름은 최대 14글자
-	char out[15] = "";
+	char out[MAX_STRLEN + 1] = "";
 	if (!parse_argument(file_name, if_, out))
 		goto done;
 
@@ -467,7 +467,7 @@ parse_argument(const char *file_name, struct intr_frame *if_, char *out) {
 
 		// 바로 반환하면 파일 이름이 길다는 의미
 		if (argc == 0) {
-			if (strlen(token) >= MAX_STRLEN) {
+			if (strlen(token) > MAX_STRLEN) {
 				palloc_free_page (cmd);
 				return false;
 			}
