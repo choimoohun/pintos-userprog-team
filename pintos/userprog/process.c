@@ -180,6 +180,13 @@ process_exec (void *f_name) {
 		argc++;
 		word = strtok_r (NULL," ", &word_pointer);
 	}
+
+	/* 단어가 WORD_SIZE개를 넘으면 버리지 않고 실패로 처리한다. */
+	if (word != NULL)
+	{
+		palloc_free_page (file_name);
+		return -1;
+	}
 	
 	/* We cannot use the intr_frame in the thread structure.
 	 * This is because when current thread rescheduled,
