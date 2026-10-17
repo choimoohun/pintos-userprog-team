@@ -101,6 +101,7 @@ struct thread {
 #ifdef USERPROG
 	/* userprog/process.c가 관리하는 필드. */
 	uint64_t *pml4;                     /* 4단계 페이지 맵 (PML4). */
+   int exit_status;                    /* 종료 코드 */
 #endif
 #ifdef VM
 	/* 스레드가 가진 가상 메모리 전체에 대한 테이블. */

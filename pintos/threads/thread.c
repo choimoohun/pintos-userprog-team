@@ -572,6 +572,7 @@ init_thread (struct thread *t, const char *name, int priority) {
 	t->waiting_lock = NULL;
 	list_init (&t->locks);
 	t->magic = THREAD_MAGIC;
+	t->exit_status = -1;
 }
 
 /* 다음에 실행할 스레드를 골라서 돌려준다.
