@@ -14,9 +14,10 @@
 #include "filesys/filesys.h"
 
 void syscall_entry (void);
-static void check_address (const void *addr);
-static void check_buffer (const void *buffer, size_t size);
-static void check_string (const char *str);
+static bool check_address (const void *addr);
+static bool check_buffer (const void *buffer, size_t size);
+static bool check_string (const char *str);
+static void sys_exit (int status);
 void syscall_handler (struct intr_frame *);
 
 /* System call.
@@ -51,47 +52,60 @@ syscall_init (void) {
 	lock_init (&filesys_lock);
 }
 
+/* 현재 프로세스를 종료 코드 STATUS로 끝낸다. */
+static void sys_exit (int status) {
+	thread_current ()->exit_status = status;
+	thread_exit ();
+}
+
 /* 사용자가 넘긴 주소가 안전한지 검사한다.
-   NULL, 커널 주소, 매핑되지 않은 주소면 프로세스를 exit(-1)로 끝낸다.
+   NULL, 커널 주소, 매핑되지 않은 주소면 false를 돌려준다.
+   안전하면 true를 돌려준다.
    TODO: Project 3에서 lazy loading이 들어가면 수정이 필요하다. */
-static void 
+static bool 
 check_address (const void *addr) {
 	if (addr == NULL || !is_user_vaddr (addr) || pml4_get_page(thread_current ()->pml4, addr) == NULL) {
-		thread_current ()->exit_status = -1;
-		thread_exit ();
+		return false;
 	}
+	return true;
 }
 
 /* BUFFER부터 SIZE바이트가 걸친 모든 페이지를 페이지마다 한 번씩 검사한다. */
-static void 
+static bool 
 check_buffer (const void *buffer, size_t size) {
 	if (size == 0)
-		return;
+		return true;
 
 	uintptr_t start_page = (uintptr_t) pg_round_down (buffer);
 	uintptr_t end = (uintptr_t) buffer + size - 1;
 
 	for (uintptr_t page = start_page; page <= end; page += PGSIZE) {
-		check_address ((const void *) page);
+		if (!check_address ((const void *) page)) {
+			return false;
+		}
 	}
+	return true;
 }
 
 /* 문자열 STR을 '\0'까지 따라가며, 첫 글자와 새 페이지에 들어설 때마다 검사한다. */
-static void 
+static bool 
 check_string (const char *str) {
 	const char *p = str;
 
 	while (true) {
 		if (p == str || pg_ofs (p) == 0) {
-			check_address (p);
+			if (!check_address (p)) {
+				return false;
+			}
 		}
 
 		if (*p == '\0') {
-			break;
+			return true;
 		}
 
 		p++;
 	}
+	return true;
 }
 
 /* The main system call interface */
@@ -102,15 +116,16 @@ syscall_handler (struct intr_frame *f) {
 			power_off ();
 			break;
 		case SYS_EXIT:
-			thread_current ()->exit_status = (int) f->R.rdi;
-			thread_exit ();
+			sys_exit ((int) f->R.rdi);
 			break;
 		case SYS_WRITE: {
 			int fd = (int) f->R.rdi;
 			const char *buffer = (const char *) f->R.rsi;
 			size_t size = (size_t) f->R.rdx;
 
-			check_buffer (buffer, size);
+			if (!check_buffer (buffer, size)) {
+				sys_exit (-1);
+			}
 	
 			if (fd == 1) {
 				putbuf (buffer, size);
@@ -126,7 +141,9 @@ syscall_handler (struct intr_frame *f) {
 			unsigned initial_size = (unsigned) f->R.rsi;
 
 			/* lock 잡기 전에 파일 이름 검사 */
-			check_string (file);
+			if (!check_string (file)) {
+				sys_exit (-1);
+			}
 
 			/* lock 잡기 */
 			lock_acquire (&filesys_lock);
