@@ -8,8 +8,16 @@
 #include "threads/flags.h"
 #include "threads/init.h"
 #include "intrinsic.h"
+#include "threads/vaddr.h"
+#include "threads/mmu.h"
+#include "threads/synch.h"
+#include "filesys/filesys.h"
 
 void syscall_entry (void);
+static bool check_address (const void *addr);
+static bool check_buffer (const void *buffer, size_t size);
+static bool check_string (const char *str);
+static void sys_exit (int status);
 void syscall_handler (struct intr_frame *);
 
 /* System call.
@@ -25,6 +33,10 @@ void syscall_handler (struct intr_frame *);
 #define MSR_LSTAR 0xc0000082        /* Long mode SYSCALL target */
 #define MSR_SYSCALL_MASK 0xc0000084 /* Mask for the eflags */
 
+/* 파일 시스템은 동기화가 안 되어 있으므로, 
+파일 시스템 함수 호출을 감싸는 전역 lock. */
+static struct lock filesys_lock;
+
 void
 syscall_init (void) {
 	write_msr(MSR_STAR, ((uint64_t)SEL_UCSEG - 0x10) << 48  |
@@ -36,6 +48,64 @@ syscall_init (void) {
 	 * mode stack. Therefore, we masked the FLAG_FL. */
 	write_msr(MSR_SYSCALL_MASK,
 			FLAG_IF | FLAG_TF | FLAG_DF | FLAG_IOPL | FLAG_AC | FLAG_NT);
+
+	lock_init (&filesys_lock);
+}
+
+/* 현재 프로세스를 종료 코드 STATUS로 끝낸다. */
+static void sys_exit (int status) {
+	thread_current ()->exit_status = status;
+	thread_exit ();
+}
+
+/* 사용자가 넘긴 주소가 안전한지 검사한다.
+   NULL, 커널 주소, 매핑되지 않은 주소면 false를 돌려준다.
+   안전하면 true를 돌려준다.
+   TODO: Project 3에서 lazy loading이 들어가면 수정이 필요하다. */
+static bool 
+check_address (const void *addr) {
+	if (addr == NULL || !is_user_vaddr (addr) || pml4_get_page(thread_current ()->pml4, addr) == NULL) {
+		return false;
+	}
+	return true;
+}
+
+/* BUFFER부터 SIZE바이트가 걸친 모든 페이지를 페이지마다 한 번씩 검사한다. */
+static bool 
+check_buffer (const void *buffer, size_t size) {
+	if (size == 0)
+		return true;
+
+	uintptr_t start_page = (uintptr_t) pg_round_down (buffer);
+	uintptr_t end = (uintptr_t) buffer + size - 1;
+
+	for (uintptr_t page = start_page; page <= end; page += PGSIZE) {
+		if (!check_address ((const void *) page)) {
+			return false;
+		}
+	}
+	return true;
+}
+
+/* 문자열 STR을 '\0'까지 따라가며, 첫 글자와 새 페이지에 들어설 때마다 검사한다. */
+static bool 
+check_string (const char *str) {
+	const char *p = str;
+
+	while (true) {
+		if (p == str || pg_ofs (p) == 0) {
+			if (!check_address (p)) {
+				return false;
+			}
+		}
+
+		if (*p == '\0') {
+			return true;
+		}
+
+		p++;
+	}
+	return true;
 }
 
 /* The main system call interface */
@@ -46,20 +116,49 @@ syscall_handler (struct intr_frame *f) {
 			power_off ();
 			break;
 		case SYS_EXIT:
-			thread_current ()->exit_status = (int) f->R.rdi;
-			thread_exit ();
+			sys_exit ((int) f->R.rdi);
 			break;
-		case SYS_WRITE:
-			if ((int) f->R.rdi == 1) {
-				const char *buffer = (const char *) f->R.rsi;
-				size_t size = (size_t) f->R.rdx;
-				// TODO: 잘못된 버퍼 접근 방지
+		case SYS_WRITE: {
+			int fd = (int) f->R.rdi;
+			const char *buffer = (const char *) f->R.rsi;
+			size_t size = (size_t) f->R.rdx;
+
+			if (!check_buffer (buffer, size)) {
+				sys_exit (-1);
+			}
+	
+			if (fd == 1) {
 				putbuf (buffer, size);
 				f->R.rax = size;
 			} else {
 				f->R.rax = -1;
 			}
 			break;
+		}
+		case SYS_CREATE: {
+			/* 인자 꺼내기 */
+			const char *file = (const char *) f->R.rdi;
+			unsigned initial_size = (unsigned) f->R.rsi;
+
+			/* lock 잡기 전에 파일 이름 검사 */
+			if (!check_string (file)) {
+				sys_exit (-1);
+			}
+
+			/* lock 잡기 */
+			lock_acquire (&filesys_lock);
+
+			/* 파일 만들고 결과를 변수에 저장 */
+			bool result = filesys_create (file, initial_size);
+
+			/* ⑤ lock 풀기 */
+			lock_release (&filesys_lock);
+
+			/* ⑥ 결과 돌려주기 */
+			f->R.rax = result;
+
+			break;
+		}
 		default:
 			thread_exit ();
 			break;
