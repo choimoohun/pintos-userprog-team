@@ -1,5 +1,6 @@
 #include "userprog/syscall.h"
 #include <stdio.h>
+#include <limits.h>
 #include <syscall-nr.h>
 #include "threads/interrupt.h"
 #include "threads/thread.h"
@@ -283,7 +284,9 @@ sys_filesize (int fd) {
 		sys_exit (-1);
 	}
 
+	lock_acquire (&filesys_lock);
 	return file_length (thread_current ()->fd_table[fd]);
+	lock_release (&filesys_lock);
 }
 
 /* FD에 해당하는 파일에서 다음에 읽거나 쓸 위치를 직접 지정한다. */
@@ -293,7 +296,13 @@ sys_seek (int fd, unsigned position) {
 		sys_exit (-1);
 	}
 
+	if (position > INT_MAX) {
+		position = INT_MAX;
+	}
+
+	lock_acquire (&filesys_lock);
 	file_seek (thread_current ()->fd_table[fd], position);
+	lock_release (&filesys_lock);
 }
 
 /* FD에 해당하는 파일의 현재 위치가 어디인지 알려준다. */
@@ -303,7 +312,9 @@ sys_tell (int fd) {
 		sys_exit (-1);
 	}
 
+	lock_acquire (&filesys_lock);
 	return file_tell (thread_current ()->fd_table[fd]);
+	lock_release (&filesys_lock);
 }
 
 /* 이름이 FILE이고 크기가 INITIAL_SIZE인 파일을 만든다. 성공하면 true.
