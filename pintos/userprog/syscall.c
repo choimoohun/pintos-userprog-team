@@ -226,8 +226,6 @@ sys_halt (void) {
 // TODO: read-normal 테스트 케이스를 통과하려면 filesize()를 구현해야 함
 static int
 sys_read (int fd, void *buffer, unsigned length) {
-	int result = -1;
-
 	if (!check_buffer (buffer, length)) {
 		sys_exit (-1);
 	}
@@ -237,7 +235,7 @@ sys_read (int fd, void *buffer, unsigned length) {
 		for (unsigned i = 0; i < length; i++) {
 			buf[i] = input_getc ();
 		}
-		result = length;
+		return length;
 	}
 	
 	if (!fd_to_file (fd)) {
@@ -245,10 +243,10 @@ sys_read (int fd, void *buffer, unsigned length) {
 	}
 	
 	lock_acquire (&filesys_lock);
-	result = file_read (thread_current ()->fd_table[fd], buffer, length);
+	int size = file_read (thread_current ()->fd_table[fd], buffer, length);
 	lock_release (&filesys_lock);
-	
-	return result;
+
+	return size;
 }
 
 
@@ -256,8 +254,6 @@ sys_read (int fd, void *buffer, unsigned length) {
    버퍼가 잘못된 주소면 프로세스를 exit(-1)로 끝낸다. */
 static int 
 sys_write (int fd, const void *buffer, unsigned length) {
-	int result = -1;
-
 	if (!check_buffer (buffer, length)) {
 		sys_exit (-1);
 	}
@@ -272,10 +268,10 @@ sys_write (int fd, const void *buffer, unsigned length) {
 	}
 
 	lock_acquire (&filesys_lock);
-	result = file_write (thread_current()->fd_table[fd], buffer, length);
+	int size = file_write (thread_current()->fd_table[fd], buffer, length);
 	lock_release (&filesys_lock);
 
-	return result;
+	return size;
 }
 
 /* 이름이 FILE이고 크기가 INITIAL_SIZE인 파일을 만든다. 성공하면 true.
