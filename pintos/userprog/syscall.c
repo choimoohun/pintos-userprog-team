@@ -253,6 +253,8 @@ sys_read (int fd, void *buffer, unsigned length) {
    버퍼가 잘못된 주소면 프로세스를 exit(-1)로 끝낸다. */
 static int 
 sys_write (int fd, const void *buffer, unsigned length) {
+	int result = -1;
+
 	if (!check_buffer (buffer, length)) {
 		sys_exit (-1);
 	}
@@ -260,9 +262,17 @@ sys_write (int fd, const void *buffer, unsigned length) {
 	if (fd == 1) {
 		putbuf (buffer, length);
 		return length;
-	} else {
-		return -1;
 	}
+	
+	if (fd >= 2) {
+		if (!fd_to_file (fd))
+			sys_exit (-1);
+		lock_acquire (&filesys_lock);
+		result = file_write (thread_current()->fd_table[fd], buffer, length);
+		lock_release (&filesys_lock);
+	}
+
+	return result;
 }
 
 /* 이름이 FILE이고 크기가 INITIAL_SIZE인 파일을 만든다. 성공하면 true.
