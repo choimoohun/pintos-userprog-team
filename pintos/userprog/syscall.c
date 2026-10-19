@@ -294,7 +294,7 @@ sys_seek (int fd, unsigned position) {
 		sys_exit (-1);
 	}
 
-	return file_seek (thread_current ()->fd_table[fd], position);
+	file_seek (thread_current ()->fd_table[fd], position);
 }
 
 /* FD에 해당하는 파일의 현재 위치가 어디인지 알려준다. */
