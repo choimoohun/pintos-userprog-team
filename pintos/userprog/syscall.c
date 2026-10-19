@@ -170,11 +170,11 @@ sys_close (int fd) {
 		sys_exit (-1);
 	
 	struct thread *t = thread_current ();
-	t->fd_table[fd] = NULL;
-
+	
 	lock_acquire (&filesys_lock);
-
+	
 	file_close (t->fd_table[fd]);
+	t->fd_table[fd] = NULL;
 	
 	lock_release (&filesys_lock);
 }
