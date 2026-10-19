@@ -14,19 +14,21 @@
 #include "filesys/filesys.h"
 #include "filesys/file.h"
 #include "threads/palloc.h"
+#include "devices/input.h"
 
 void syscall_entry (void);
 static bool check_address (const void *addr);
 static bool check_buffer (const void *buffer, size_t size);
 static bool check_string (const char *str);
 static void sys_halt (void);
+static int sys_read (int fd, void *buffer, unsigned length);
 static int sys_write (int fd, const void *buffer, unsigned length);
 static bool sys_create (const char *file, unsigned initial_size);
 static bool sys_remove (const char *file);
 static void sys_exit (int status);
 static int sys_open (const char *file);
 static void sys_close (int fd);
-static struct file *fd_to_file (int gd);
+static struct file *fd_to_file (int fd);
 void syscall_handler (struct intr_frame *);
 
 /* System call.
@@ -220,6 +222,34 @@ sys_halt (void) {
 	power_off ();
 }
 
+/* FD를 통해 읽은 내용을 BUFFER에 LENGTH바이트를 쓰고, 실제로 쓴 바이트 수를 돌려준다.
+   버퍼가 잘못된 주소면 프로세스를 exit(-1)로 끝낸다. */
+// TODO: read-normal 테스트 케이스를 통과하려면 filesize()를 구현해야 함
+static int
+sys_read (int fd, void *buffer, unsigned length) {
+	if (!check_buffer (buffer, length)) {
+		sys_exit (-1);
+	}
+
+	if (fd == 0) {
+		char *buf = (char *) buffer;
+		for (unsigned i = 0; i < length; i++) {
+			buf[i] = input_getc ();
+		}
+		return length;
+	}
+	
+	if (!fd_to_file (fd)) {
+		sys_exit (-1);
+	}
+	
+	lock_acquire (&filesys_lock);
+	int size = file_read (thread_current ()->fd_table[fd], buffer, length);
+	lock_release (&filesys_lock);
+
+	return size;
+}
+
 /* FD에 BUFFER의 LENGTH바이트를 쓰고, 실제로 쓴 바이트 수를 돌려준다.
    버퍼가 잘못된 주소면 프로세스를 exit(-1)로 끝낸다. */
 static int 
@@ -231,9 +261,17 @@ sys_write (int fd, const void *buffer, unsigned length) {
 	if (fd == 1) {
 		putbuf (buffer, length);
 		return length;
-	} else {
-		return -1;
 	}
+	
+	if (!fd_to_file (fd)) {
+		sys_exit (-1);
+	}
+
+	lock_acquire (&filesys_lock);
+	int size = file_write (thread_current()->fd_table[fd], buffer, length);
+	lock_release (&filesys_lock);
+
+	return size;
 }
 
 /* 이름이 FILE이고 크기가 INITIAL_SIZE인 파일을 만든다. 성공하면 true.
@@ -294,6 +332,11 @@ syscall_handler (struct intr_frame *f) {
 			break;
 		case SYS_EXIT:
 			sys_exit ((int) f->R.rdi);
+			break;
+		case SYS_READ:
+			f->R.rax = sys_read ((int) f->R.rdi,
+								  (void *) f->R.rsi,
+								  (unsigned) f->R.rdx);
 			break;
 		case SYS_WRITE:
 			f->R.rax = sys_write ((int) f->R.rdi, 
