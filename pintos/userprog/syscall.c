@@ -229,14 +229,10 @@ sys_read (int fd, void *buffer, unsigned length) {
 		sys_exit (-1);
 	}
 
-	if (fd == 1) {
-		sys_exit (-1);
-	}
-
 	if (fd == 0) {
 		char *buf = (char *) buffer;
 		for (unsigned i = 0; i < length; i++) {
-			buf[i] = input_getc();
+			buf[i] = input_getc ();
 		}
 		result = length;
 	}
