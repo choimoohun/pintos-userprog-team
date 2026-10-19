@@ -1,5 +1,6 @@
 #include "userprog/syscall.h"
 #include <stdio.h>
+#include <limits.h>
 #include <syscall-nr.h>
 #include "threads/interrupt.h"
 #include "threads/thread.h"
@@ -23,6 +24,9 @@ static bool check_string (const char *str);
 static void sys_halt (void);
 static int sys_read (int fd, void *buffer, unsigned length);
 static int sys_write (int fd, const void *buffer, unsigned length);
+static int sys_filesize (int fd);
+static void sys_seek (int fd, unsigned position);
+static unsigned sys_tell (int fd);
 static bool sys_create (const char *file, unsigned initial_size);
 static bool sys_remove (const char *file);
 static void sys_exit (int status);
@@ -224,7 +228,6 @@ sys_halt (void) {
 
 /* FD를 통해 읽은 내용을 BUFFER에 LENGTH바이트를 쓰고, 실제로 쓴 바이트 수를 돌려준다.
    버퍼가 잘못된 주소면 프로세스를 exit(-1)로 끝낸다. */
-// TODO: read-normal 테스트 케이스를 통과하려면 filesize()를 구현해야 함
 static int
 sys_read (int fd, void *buffer, unsigned length) {
 	if (!check_buffer (buffer, length)) {
@@ -272,6 +275,48 @@ sys_write (int fd, const void *buffer, unsigned length) {
 	lock_release (&filesys_lock);
 
 	return size;
+}
+
+/* FD에 해당하는 파일 전체 크기가 몇 바이트인지 알려준다. */
+static int
+sys_filesize (int fd) {
+	if (!fd_to_file (fd)) {
+		sys_exit (-1);
+	}
+
+	lock_acquire (&filesys_lock);
+	int size = file_length (thread_current ()->fd_table[fd]);
+	lock_release (&filesys_lock);
+	return size;
+}
+
+/* FD에 해당하는 파일에서 다음에 읽거나 쓸 위치를 직접 지정한다. */
+static void
+sys_seek (int fd, unsigned position) {
+	if (!fd_to_file (fd)) {
+		sys_exit (-1);
+	}
+
+	if (position > INT_MAX) {
+		position = INT_MAX;
+	}
+
+	lock_acquire (&filesys_lock);
+	file_seek (thread_current ()->fd_table[fd], position);
+	lock_release (&filesys_lock);
+}
+
+/* FD에 해당하는 파일의 현재 위치가 어디인지 알려준다. */
+static unsigned
+sys_tell (int fd) {
+	if (!fd_to_file (fd)) {
+		sys_exit (-1);
+	}
+
+	lock_acquire (&filesys_lock);
+	int position = file_tell (thread_current ()->fd_table[fd]);
+	lock_release (&filesys_lock);
+	return position;
 }
 
 /* 이름이 FILE이고 크기가 INITIAL_SIZE인 파일을 만든다. 성공하면 true.
@@ -342,6 +387,16 @@ syscall_handler (struct intr_frame *f) {
 			f->R.rax = sys_write ((int) f->R.rdi, 
 								  (const void *) f->R.rsi,
 								  (unsigned) f->R.rdx);
+			break;
+		case SYS_FILESIZE:
+			f->R.rax = sys_filesize ((int) f->R.rdi);
+			break;
+		case SYS_SEEK:
+			sys_seek ((int) f->R.rdi,
+					  (unsigned) f->R.rsi);
+			break;
+		case SYS_TELL:
+			f->R.rax = sys_tell ((int) f->R.rdi);
 			break;
 		case SYS_CREATE:
 			f->R.rax = sys_create ((const char *) f->R.rdi, 
