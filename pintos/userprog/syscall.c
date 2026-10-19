@@ -23,6 +23,9 @@ static bool check_string (const char *str);
 static void sys_halt (void);
 static int sys_read (int fd, void *buffer, unsigned length);
 static int sys_write (int fd, const void *buffer, unsigned length);
+static int sys_filesize (int fd);
+static void sys_seek (int fd, unsigned position);
+static unsigned sys_tell (int fd);
 static bool sys_create (const char *file, unsigned initial_size);
 static bool sys_remove (const char *file);
 static void sys_exit (int status);
@@ -274,6 +277,36 @@ sys_write (int fd, const void *buffer, unsigned length) {
 	return size;
 }
 
+/* FD에 해당하는 파일 전체 크기가 몇 바이트인지 알려준다. */
+static int
+sys_filesize (int fd) {
+	if (!fd_to_file (fd)) {
+		sys_exit (-1);
+	}
+
+	return file_length (thread_current ()->fd_table[fd]);
+}
+
+/* FD에 해당하는 파일에서 다음에 읽거나 쓸 위치를 직접 지정한다. */
+static void
+sys_seek (int fd, unsigned position) {
+	if (!fd_to_file (fd)) {
+		sys_exit (-1);
+	}
+
+	return file_seek (thread_current ()->fd_table[fd], position);
+}
+
+/* FD에 해당하는 파일의 현재 위치가 어디인지 알려준다. */
+static unsigned
+sys_tell (int fd) {
+	if (!fd_to_file (fd)) {
+		sys_exit (-1);
+	}
+
+	return file_tell (thread_current ()->fd_table[fd]);
+}
+
 /* 이름이 FILE이고 크기가 INITIAL_SIZE인 파일을 만든다. 성공하면 true.
 이름이 잘못된 주소면 프로세스를 exit(-1)로 끝낸다. */
 static bool 
@@ -342,6 +375,16 @@ syscall_handler (struct intr_frame *f) {
 			f->R.rax = sys_write ((int) f->R.rdi, 
 								  (const void *) f->R.rsi,
 								  (unsigned) f->R.rdx);
+			break;
+		case SYS_FILESIZE:
+			f->R.rax = sys_filesize ((int) f->R.rdi);
+			break;
+		case SYS_SEEK:
+			sys_seek ((int) f->R.rdi,
+					  (unsigned) f->R.rsi);
+			break;
+		case SYS_TELL:
+			f->R.rax = sys_tell ((int) f->R.rdi);
 			break;
 		case SYS_CREATE:
 			f->R.rax = sys_create ((const char *) f->R.rdi, 
