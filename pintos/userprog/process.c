@@ -19,6 +19,7 @@
 #include "devices/timer.h"
 #include "threads/vaddr.h"
 #include "intrinsic.h"
+#include "userprog/syscall.h"
 #ifdef VM
 #include "vm/vm.h"
 #endif
@@ -34,6 +35,8 @@ static void __do_fork (void *);
 static void
 process_init (void) {
 	struct thread *current = thread_current ();
+	/* current의 fd_table에 페이지 한 장 받기 */
+	current->fd_table = palloc_get_page (PAL_ZERO);
 }
 
 /* Starts the first userland program, called "initd", loaded from FILE_NAME.
@@ -255,6 +258,8 @@ process_exit (void) {
 	if (curr->pml4) {
 		printf ("%s: exit(%d)\n", curr->name, curr->exit_status);
 	}
+
+	destroy_fd_table ();
 
 	process_cleanup ();
 }
