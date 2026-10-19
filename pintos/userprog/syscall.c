@@ -12,6 +12,8 @@
 #include "threads/mmu.h"
 #include "threads/synch.h"
 #include "filesys/filesys.h"
+#include "filesys/file.h"
+#include "threads/palloc.h"
 
 void syscall_entry (void);
 static bool check_address (const void *addr);
@@ -22,6 +24,8 @@ static int sys_write (int fd, const void *buffer, unsigned length);
 static bool sys_create (const char *file, unsigned initial_size);
 static bool sys_remove (const char *file);
 static void sys_exit (int status);
+static int sys_open (const char *file);
+static struct file *fd_to_file (int gd);
 void syscall_handler (struct intr_frame *);
 
 /* System call.
@@ -56,6 +60,29 @@ syscall_init (void) {
 	lock_init (&filesys_lock);
 }
 
+/* 현재 프로세스의 열린 파일을 모두 닫고, fd 표 페이지를 돌려준다.
+   fd 표는 사용자 프로그램만 process_init에서 받는다.
+   fd 표를 받은 적 없는 스레드면(fd_table이 NULL) 아무것도 하지 않는다. */
+void 
+destroy_fd_table (void) {
+	struct thread *t = thread_current ();
+	if (t->fd_table == NULL) {
+		return;
+	}
+
+	lock_acquire (&filesys_lock);
+
+	for (int fd = 2; fd < FD_MAX; fd++) {
+		if (t->fd_table[fd] != NULL) {
+			file_close (t->fd_table[fd]);
+		}
+	}
+
+	lock_release (&filesys_lock);
+
+	palloc_free_page (t->fd_table);
+	t->fd_table = NULL;
+}
 
 /* 사용자가 넘긴 주소가 안전한지 검사한다.
    NULL, 커널 주소, 매핑되지 않은 주소면 false를 돌려준다.
@@ -84,6 +111,68 @@ check_buffer (const void *buffer, size_t size) {
 		}
 	}
 	return true;
+}
+
+/* 이름이 FILE인 파일을 열고, 새 fd를 돌려준다.
+   파일이 없거나 fd 표에 빈 칸이 없으면 -1을 돌려준다.
+   이름이 잘못된 주소면 프로세스를 exit(-1)로 끝낸다. */
+static int 
+sys_open (const char *file) {
+	/* 파일 이름이 안전한 주소인지 lock 잡기 전에 검사한다. */
+	if (!check_string (file)) {
+		sys_exit (-1);
+	}
+
+	/* fd 표를 받지 못한 프로세스는 파일을 열 수 없다. */
+	struct file **fd_table = thread_current ()->fd_table;
+
+	if (fd_table == NULL) {
+		return -1;
+	}
+
+	/* 2번부터 가장 작은 빈 칸을 찾는다. (0, 1은 콘솔용)
+	   빈 칸을 먼저 찾아서, 칸이 없을 때 파일을 괜히 열지 않는다. */
+	int fd;
+
+	for (fd = 2; fd < FD_MAX; fd++) {
+		if (fd_table[fd] == NULL) {
+			break;
+		}
+	}
+
+	/* 끝까지 돌았는데 빈 칸이 없다. */
+	if (fd == FD_MAX) {
+		return -1;
+	}
+
+	/* 파일 시스템은 동기화가 안 되어 있어서 lock 안에서 연다. */
+	lock_acquire (&filesys_lock);
+	struct file *opened = filesys_open (file);
+	lock_release (&filesys_lock);
+
+	/* 없는 파일이거나 이름이 ""이면 열리지 않는다. */
+	if (opened == NULL) {
+		return -1;
+	}
+
+	/* 찾은 빈 칸에 열린 파일을 넣고, 그 칸 번호를 fd로 돌려준다. */
+	fd_table[fd] = opened;
+
+	return fd;
+}
+
+/* FD에 해당하는 열린 파일을 돌려준다.
+   FD가 범위 밖(2 미만, FD_MAX 이상)이거나 빈 칸이면 NULL을 돌려준다.
+   fd 0, 1(콘솔)은 여기서 다루지 않는다. */
+static struct file *
+fd_to_file (int fd) {
+	struct file **fd_table = thread_current ()->fd_table;
+
+	if (fd_table == NULL || fd < 2 || fd >= FD_MAX) {
+		return NULL;
+	}
+
+	return fd_table[fd];
 }
 
 /* 문자열 STR을 '\0'까지 따라가며, 첫 글자와 새 페이지에 들어설 때마다 검사한다. */
@@ -199,6 +288,9 @@ syscall_handler (struct intr_frame *f) {
 			break;
 		case SYS_REMOVE:
 			f->R.rax = sys_remove ((const char *) f->R.rdi);
+			break;
+		case SYS_OPEN:
+			f->R.rax = sys_open ((const char *) f->R.rdi);
 			break;
 		default:
 			sys_exit (-1);

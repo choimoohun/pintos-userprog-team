@@ -30,6 +30,7 @@ typedef int tid_t;
 #define PRI_MIN 0                       /* 가장 낮은 우선순위. */
 #define PRI_DEFAULT 31                  /* 기본 우선순위. */
 #define PRI_MAX 63                      /* 가장 높은 우선순위. */
+#define FD_MAX 128                      /* 프로세스당 fd 표 칸 수 (페이지 한 장). */
 
 /* 커널 스레드 또는 사용자 프로세스.
  
@@ -102,6 +103,8 @@ struct thread {
 	/* userprog/process.c가 관리하는 필드. */
 	uint64_t *pml4;                     /* 4단계 페이지 맵 (PML4). */
    int exit_status;                    /* 종료 코드 */
+   /* fd 표 (palloc으로 받은 페이지). fd_table[fd] = 열린 파일. */
+   struct file **fd_table;
 #endif
 #ifdef VM
 	/* 스레드가 가진 가상 메모리 전체에 대한 테이블. */
