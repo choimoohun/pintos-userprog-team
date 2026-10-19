@@ -227,7 +227,6 @@ sys_halt (void) {
 
 /* FD를 통해 읽은 내용을 BUFFER에 LENGTH바이트를 쓰고, 실제로 쓴 바이트 수를 돌려준다.
    버퍼가 잘못된 주소면 프로세스를 exit(-1)로 끝낸다. */
-// TODO: read-normal 테스트 케이스를 통과하려면 filesize()를 구현해야 함
 static int
 sys_read (int fd, void *buffer, unsigned length) {
 	if (!check_buffer (buffer, length)) {
