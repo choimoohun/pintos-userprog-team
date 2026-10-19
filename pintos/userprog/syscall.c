@@ -20,6 +20,7 @@ static bool check_string (const char *str);
 static void sys_halt (void);
 static int sys_write (int fd, const void *buffer, unsigned length);
 static bool sys_create (const char *file, unsigned initial_size);
+static bool sys_remove (const char *file);
 static void sys_exit (int status);
 void syscall_handler (struct intr_frame *);
 
@@ -149,6 +150,27 @@ sys_create (const char *file, unsigned initial_size) {
 	return result;
 }
 
+/* 이름이 FILE인 파일을 지운다. 성공하면 true, 실패하면 false.
+   이름이 잘못된 주소면 프로세스를 exit(-1)로 끝낸다. */
+static bool 
+sys_remove (const char *file) {
+	/* lock 잡기 전에 파일 이름 검사 */
+	if (!check_string (file)) {
+		sys_exit (-1);
+	}
+
+	/* lock 잡기 */
+	lock_acquire (&filesys_lock);
+
+	/* 파일 지우고 결과를 변수에 저장 */
+	bool result = filesys_remove (file);
+
+	/* lock 풀기 */
+	lock_release (&filesys_lock);
+
+	return result;
+}
+
 /* 현재 프로세스를 종료 코드 STATUS로 끝낸다. */
 static void 
 sys_exit (int status) {
@@ -174,6 +196,9 @@ syscall_handler (struct intr_frame *f) {
 		case SYS_CREATE:
 			f->R.rax = sys_create ((const char *) f->R.rdi, 
 								   (unsigned) f->R.rsi);
+			break;
+		case SYS_REMOVE:
+			f->R.rax = sys_remove ((const char *) f->R.rdi);
 			break;
 		default:
 			sys_exit (-1);
