@@ -25,6 +25,7 @@ static bool sys_create (const char *file, unsigned initial_size);
 static bool sys_remove (const char *file);
 static void sys_exit (int status);
 static int sys_open (const char *file);
+static void sys_close (int fd);
 static struct file *fd_to_file (int gd);
 void syscall_handler (struct intr_frame *);
 
@@ -161,6 +162,23 @@ sys_open (const char *file) {
 	return fd;
 }
 
+/* FD에 해당하는 열린 파일을 닫는다.
+   범위를 벗어난 FD일 경우 프로세스를 종료시킨다. */
+static void
+sys_close (int fd) {
+	if (!fd_to_file (fd))
+		sys_exit (-1);
+	
+	struct thread *t = thread_current ();
+	t->fd_table[fd] = NULL;
+
+	lock_acquire (&filesys_lock);
+
+	file_close (t->fd_table[fd]);
+	
+	lock_release (&filesys_lock);
+}
+
 /* FD에 해당하는 열린 파일을 돌려준다.
    FD가 범위 밖(2 미만, FD_MAX 이상)이거나 빈 칸이면 NULL을 돌려준다.
    fd 0, 1(콘솔)은 여기서 다루지 않는다. */
@@ -291,6 +309,9 @@ syscall_handler (struct intr_frame *f) {
 			break;
 		case SYS_OPEN:
 			f->R.rax = sys_open ((const char *) f->R.rdi);
+			break;
+		case SYS_CLOSE:
+			sys_close ((int) f->R.rdi);
 			break;
 		default:
 			sys_exit (-1);
