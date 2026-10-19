@@ -285,8 +285,9 @@ sys_filesize (int fd) {
 	}
 
 	lock_acquire (&filesys_lock);
-	return file_length (thread_current ()->fd_table[fd]);
+	int size = file_length (thread_current ()->fd_table[fd]);
 	lock_release (&filesys_lock);
+	return size;
 }
 
 /* FD에 해당하는 파일에서 다음에 읽거나 쓸 위치를 직접 지정한다. */
@@ -313,8 +314,9 @@ sys_tell (int fd) {
 	}
 
 	lock_acquire (&filesys_lock);
-	return file_tell (thread_current ()->fd_table[fd]);
+	int position = file_tell (thread_current ()->fd_table[fd]);
 	lock_release (&filesys_lock);
+	return position;
 }
 
 /* 이름이 FILE이고 크기가 INITIAL_SIZE인 파일을 만든다. 성공하면 true.
