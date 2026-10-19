@@ -14,6 +14,7 @@
 #include "filesys/filesys.h"
 #include "filesys/file.h"
 #include "threads/palloc.h"
+#include "devices/input.h"
 
 void syscall_entry (void);
 static bool check_address (const void *addr);
@@ -248,7 +249,6 @@ sys_read (int fd, void *buffer, unsigned length) {
 
 	return size;
 }
-
 
 /* FD에 BUFFER의 LENGTH바이트를 쓰고, 실제로 쓴 바이트 수를 돌려준다.
    버퍼가 잘못된 주소면 프로세스를 exit(-1)로 끝낸다. */
