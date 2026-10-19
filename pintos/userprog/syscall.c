@@ -17,6 +17,9 @@ void syscall_entry (void);
 static bool check_address (const void *addr);
 static bool check_buffer (const void *buffer, size_t size);
 static bool check_string (const char *str);
+static void sys_halt (void);
+static int sys_write (int fd, const void *buffer, unsigned length);
+static bool sys_create (const char *file, unsigned initial_size);
 static void sys_exit (int status);
 void syscall_handler (struct intr_frame *);
 
@@ -52,11 +55,6 @@ syscall_init (void) {
 	lock_init (&filesys_lock);
 }
 
-/* 현재 프로세스를 종료 코드 STATUS로 끝낸다. */
-static void sys_exit (int status) {
-	thread_current ()->exit_status = status;
-	thread_exit ();
-}
 
 /* 사용자가 넘긴 주소가 안전한지 검사한다.
    NULL, 커널 주소, 매핑되지 않은 주소면 false를 돌려준다.
@@ -108,59 +106,77 @@ check_string (const char *str) {
 	return true;
 }
 
+/* Pintos를 종료한다. */
+static void 
+sys_halt (void) {
+	power_off ();
+}
+
+/* FD에 BUFFER의 LENGTH바이트를 쓰고, 실제로 쓴 바이트 수를 돌려준다.
+   버퍼가 잘못된 주소면 프로세스를 exit(-1)로 끝낸다. */
+static int 
+sys_write (int fd, const void *buffer, unsigned length) {
+	if (!check_buffer (buffer, length)) {
+		sys_exit (-1);
+	}
+
+	if (fd == 1) {
+		putbuf (buffer, length);
+		return length;
+	} else {
+		return -1;
+	}
+}
+
+/* 이름이 FILE이고 크기가 INITIAL_SIZE인 파일을 만든다. 성공하면 true.
+이름이 잘못된 주소면 프로세스를 exit(-1)로 끝낸다. */
+static bool 
+sys_create (const char *file, unsigned initial_size) {
+	/* lock 잡기 전에 파일 이름 검사 */
+	if (!check_string (file)) {
+		sys_exit (-1);
+	}
+
+	/* lock 잡기 */
+	lock_acquire (&filesys_lock);
+
+	/* 파일 만들고 결과를 변수에 저장 */
+	bool result = filesys_create (file, initial_size);
+
+	/* lock 풀기 */
+	lock_release (&filesys_lock);
+
+	return result;
+}
+
+/* 현재 프로세스를 종료 코드 STATUS로 끝낸다. */
+static void 
+sys_exit (int status) {
+	thread_current ()->exit_status = status;
+	thread_exit ();
+}
+
 /* The main system call interface */
 void
 syscall_handler (struct intr_frame *f) {
 	switch (f->R.rax) {
 		case SYS_HALT:
-			power_off ();
+			sys_halt ();
 			break;
 		case SYS_EXIT:
 			sys_exit ((int) f->R.rdi);
 			break;
-		case SYS_WRITE: {
-			int fd = (int) f->R.rdi;
-			const char *buffer = (const char *) f->R.rsi;
-			size_t size = (size_t) f->R.rdx;
-
-			if (!check_buffer (buffer, size)) {
-				sys_exit (-1);
-			}
-	
-			if (fd == 1) {
-				putbuf (buffer, size);
-				f->R.rax = size;
-			} else {
-				f->R.rax = -1;
-			}
+		case SYS_WRITE:
+			f->R.rax = sys_write ((int) f->R.rdi, 
+								  (const void *) f->R.rsi,
+								  (unsigned) f->R.rdx);
 			break;
-		}
-		case SYS_CREATE: {
-			/* 인자 꺼내기 */
-			const char *file = (const char *) f->R.rdi;
-			unsigned initial_size = (unsigned) f->R.rsi;
-
-			/* lock 잡기 전에 파일 이름 검사 */
-			if (!check_string (file)) {
-				sys_exit (-1);
-			}
-
-			/* lock 잡기 */
-			lock_acquire (&filesys_lock);
-
-			/* 파일 만들고 결과를 변수에 저장 */
-			bool result = filesys_create (file, initial_size);
-
-			/* ⑤ lock 풀기 */
-			lock_release (&filesys_lock);
-
-			/* ⑥ 결과 돌려주기 */
-			f->R.rax = result;
-
+		case SYS_CREATE:
+			f->R.rax = sys_create ((const char *) f->R.rdi, 
+								   (unsigned) f->R.rsi);
 			break;
-		}
 		default:
-			thread_exit ();
+			sys_exit (-1);
 			break;
 	}
 }
