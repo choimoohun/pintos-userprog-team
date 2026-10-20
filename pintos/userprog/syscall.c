@@ -6,6 +6,7 @@
 #include "threads/thread.h"
 #include "threads/loader.h"
 #include "userprog/gdt.h"
+#include "userprog/process.h"
 #include "threads/flags.h"
 #include "threads/init.h"
 #include "intrinsic.h"
@@ -32,6 +33,8 @@ static bool sys_remove (const char *file);
 static void sys_exit (int status);
 static int sys_open (const char *file);
 static void sys_close (int fd);
+static tid_t sys_fork (const char *thread_name, struct intr_frame *f);
+static int sys_wait (tid_t pid);
 static struct file *fd_to_file (int fd);
 void syscall_handler (struct intr_frame *);
 
@@ -89,6 +92,34 @@ destroy_fd_table (void) {
 
 	palloc_free_page (t->fd_table);
 	t->fd_table = NULL;
+}
+
+bool
+duplicate_fd_table (struct thread *parent) {
+	struct thread *child = thread_current ();
+	struct file *copy;
+
+	if (child->fd_table == NULL) {
+		return false;
+	}
+
+	lock_acquire (&filesys_lock);
+
+	for (int fd = 2; fd < FD_MAX; fd++) {
+		if (parent->fd_table[fd] != NULL) {
+			copy = file_duplicate (parent->fd_table[fd]);
+
+			if (copy == NULL) {
+				lock_release (&filesys_lock);
+				return false;
+			}
+			child->fd_table[fd] = copy;
+		}
+	}
+	
+	lock_release (&filesys_lock);
+
+	return true;
 }
 
 /* 사용자가 넘긴 주소가 안전한지 검사한다.
@@ -368,6 +399,20 @@ sys_exit (int status) {
 	thread_exit ();
 }
 
+static tid_t 
+sys_fork (const char *thread_name, struct intr_frame *f) {
+	if (!check_string (thread_name)) {
+		sys_exit (-1);
+	}
+	
+	return process_fork (thread_name, f);
+}
+
+static int 
+sys_wait (tid_t pid) {
+	return process_wait (pid);
+}
+
 /* The main system call interface */
 void
 syscall_handler (struct intr_frame *f) {
@@ -410,6 +455,12 @@ syscall_handler (struct intr_frame *f) {
 			break;
 		case SYS_CLOSE:
 			sys_close ((int) f->R.rdi);
+			break;
+		case SYS_FORK:
+			f->R.rax = sys_fork ((const char *) f->R.rdi, f);
+			break;
+		case SYS_WAIT:
+			f->R.rax = sys_wait ((tid_t) f->R.rdi);
 			break;
 		default:
 			sys_exit (-1);
