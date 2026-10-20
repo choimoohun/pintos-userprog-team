@@ -422,7 +422,7 @@ sys_exec (const char *cmd_line) {
 	}
 	
 	char *cmd_copy = palloc_get_page (0);
-	
+
 	if (!cmd_copy) {
 		sys_exit (-1);
 	}
@@ -432,9 +432,7 @@ sys_exec (const char *cmd_line) {
 	if (process_exec (cmd_copy) == -1) {
 		sys_exit (-1);
 	}
-
-	palloc_free_page (cmd_copy);
-
+	
 	NOT_REACHED ();
 }
 
