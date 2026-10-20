@@ -272,10 +272,11 @@ process_fork (const char *name, struct intr_frame *if_) {
 	   thread_create의 aux 칸이 하나뿐이라 구조체 주소 하나로 넘긴다.
 	   args는 지역 변수지만, 부모가 아래 sema_down에서 기다리는 동안은
 	   process_fork가 끝나지 않으므로 자식이 써도 안전하다. */
-	struct fork_args args;
-	args.parent = thread_current ();	/* 복사할 부모 (pml4, fd 표) */
-	args.parent_if = if_;				/* fork를 부른 순간의 사용자 레지스터 */
-	args.info = info;					/* 결과를 적고 부모를 깨울 자식 정보 */
+	struct fork_args args = {
+		.parent = thread_current (),   /* 복사할 부모 (pml4, fd 표) */
+		.parent_if = if_,              /* fork를 부른 순간의 사용자 레지스터 */
+		.info = info,                  /* 결과를 적고 부모를 깨울 자식 정보 */
+	};
 
 	/* 자식 스레드를 만든다.
 	   자식은 __do_fork에서 args를 받아 부모를 복제한다. */
