@@ -2,6 +2,7 @@
 #include <stdio.h>
 #include <limits.h>
 #include <syscall-nr.h>
+#include <string.h>
 #include "threads/interrupt.h"
 #include "threads/thread.h"
 #include "threads/loader.h"
@@ -35,6 +36,7 @@ static int sys_open (const char *file);
 static void sys_close (int fd);
 static tid_t sys_fork (const char *thread_name, struct intr_frame *f);
 static int sys_wait (tid_t pid);
+static int sys_exec (const char *cmd_line);
 static struct file *fd_to_file (int fd);
 void syscall_handler (struct intr_frame *);
 
@@ -413,6 +415,24 @@ sys_wait (tid_t pid) {
 	return process_wait (pid);
 }
 
+static int
+sys_exec (const char *cmd_line) {
+	if (!check_string (cmd_line)) {
+		sys_exit (-1);
+	}
+	
+	char *cmd_copy = palloc_get_page (0);
+	strlcpy (cmd_copy, cmd_line, PGSIZE);
+
+	if (process_exec (cmd_copy) == -1) {
+		sys_exit (-1);
+	}
+
+	palloc_free_page (cmd_copy);
+
+	NOT_REACHED ();
+}
+
 /* The main system call interface */
 void
 syscall_handler (struct intr_frame *f) {
@@ -461,6 +481,9 @@ syscall_handler (struct intr_frame *f) {
 			break;
 		case SYS_WAIT:
 			f->R.rax = sys_wait ((tid_t) f->R.rdi);
+			break;
+		case SYS_EXEC:
+			sys_exec ((const char *) f->R.rdi);
 			break;
 		default:
 			sys_exit (-1);
