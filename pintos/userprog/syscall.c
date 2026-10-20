@@ -422,6 +422,11 @@ sys_exec (const char *cmd_line) {
 	}
 	
 	char *cmd_copy = palloc_get_page (0);
+	
+	if (!cmd_copy) {
+		sys_exit (-1);
+	}
+
 	strlcpy (cmd_copy, cmd_line, PGSIZE);
 
 	if (process_exec (cmd_copy) == -1) {
