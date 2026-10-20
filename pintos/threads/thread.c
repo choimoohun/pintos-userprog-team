@@ -575,6 +575,8 @@ init_thread (struct thread *t, const char *name, int priority) {
 #ifdef USERPROG
 	t->exit_status = -1;
 	t->fd_table = NULL;			/* fd_table을 NULL로 */
+	list_init (&t->children);
+	t->my_info = NULL;
 #endif
 }
 

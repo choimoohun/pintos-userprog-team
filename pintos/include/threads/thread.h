@@ -5,6 +5,7 @@
 #include <list.h>
 #include <stdint.h>
 #include "threads/interrupt.h"
+#include "threads/synch.h"
 #ifdef VM
 #include "vm/vm.h"
 #endif
@@ -77,6 +78,18 @@ typedef int tid_t;
    둘 중 어느 문제든 첫 증상은 보통 thread_current()의 assertion 실패다.
    thread_current()는 실행 중인 스레드의 magic 멤버가 THREAD_MAGIC인지
    검사하는데, 스택이 넘치면 보통 이 값이 바뀌어서 assertion이 터진다. */
+
+struct child_info {
+   tid_t tid;                           /* pid */
+   int exit_status;                     /* 종료 상태 */
+   bool fork_success;                   /* fork 성공 여부 */
+   struct semaphore fork_sema;          /* fork용 세마포어 */
+   struct semaphore wait_sema;          /* wait용 세마포어 */
+   int ref_cnt;                         /* 남은 사용자 수 */
+   struct lock ref_lock;                /* 남은 사용자 수를 지키는 lock */
+   struct list_elem elem;               /* 부모 줄에 걸리는 elme */
+};
+
 /* elem 멤버는 두 가지 용도로 쓴다.
    ready list(thread.c)의 원소가 될 수도 있고,
    세마포어의 waiters(synch.c)의 원소가 될 수도 있다.
@@ -105,6 +118,10 @@ struct thread {
    int exit_status;                    /* 종료 코드 */
    /* fd 표 (palloc으로 받은 페이지). fd_table[fd] = 열린 파일. */
    struct file **fd_table;
+   /* 부모로서 내 자식 정보들의 줄 */
+   struct list children;
+   /* 자식으로서 부모 줄에 걸려 있는 나의 자식 정보 */
+   struct child_info *my_info;
 #endif
 #ifdef VM
 	/* 스레드가 가진 가상 메모리 전체에 대한 테이블. */
