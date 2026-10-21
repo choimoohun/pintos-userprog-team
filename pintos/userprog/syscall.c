@@ -55,7 +55,7 @@ void syscall_handler (struct intr_frame *);
 
 /* 파일 시스템은 동기화가 안 되어 있으므로, 
 파일 시스템 함수 호출을 감싸는 전역 lock. */
-static struct lock filesys_lock;
+struct lock filesys_lock;
 
 void
 syscall_init (void) {

@@ -3,6 +3,8 @@
 
 #include <stdbool.h>
 
+extern struct lock filesys_lock;
+
 void syscall_init (void);
 void destroy_fd_table (void);
 

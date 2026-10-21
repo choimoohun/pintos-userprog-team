@@ -528,6 +528,9 @@ process_exit (void) {
 	if (curr->pml4) {
 		printf ("%s: exit(%d)\n", curr->name, curr->exit_status);
 	}
+
+	destroy_fd_table ();
+	process_cleanup ();
  
 	if (curr->my_info != NULL) {
 		/* 부모가 wait에서 읽을 수 있게 종료 상태를 적는다. */
@@ -547,10 +550,6 @@ process_exit (void) {
 		struct child_info *info = list_entry (e, struct child_info, elem);
 		child_info_release (info);
 	}
-
-	destroy_fd_table ();
-
-	process_cleanup ();
 }
 
 /* Free the current process's resources. */
@@ -662,6 +661,7 @@ load (const char *file_name, char *words[], int argc, struct intr_frame *if_) {
 	struct file *file = NULL;
 	off_t file_ofs;
 	bool success = false;
+	bool has_lock = false;
 	int i;
 
 	/* Allocate and activate page directory. */
@@ -671,6 +671,8 @@ load (const char *file_name, char *words[], int argc, struct intr_frame *if_) {
 	process_activate (thread_current ());
 
 	/* Open executable file. */
+	lock_acquire (&filesys_lock);
+	has_lock = true;
 	file = filesys_open (file_name);
 	if (file == NULL) {
 		printf ("load: %s: open failed\n", file_name);
@@ -756,6 +758,8 @@ load (const char *file_name, char *words[], int argc, struct intr_frame *if_) {
 done:
 	/* We arrive here whether the load is successful or not. */
 	file_close (file);
+	if (has_lock)
+		lock_release (&filesys_lock);
 	return success;
 }
 
