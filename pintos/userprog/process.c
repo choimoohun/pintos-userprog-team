@@ -416,6 +416,17 @@ __do_fork (void *aux) {
 		goto error;
 	}
 
+	/* 자식도 같은 프로그램을 실행하므로, 실행 파일을 복제해 쓰기 막기를 하나 더 건다. */
+	if (parent->running_file != NULL) {
+		lock_acquire (&filesys_lock);
+		current->running_file = file_duplicate (parent->running_file);
+		lock_release (&filesys_lock);
+
+		if (current->running_file == NULL) {
+			goto error;
+		}
+	}
+
 	info->fork_success = true;
 	sema_up (&info->fork_sema);
 
@@ -557,6 +568,15 @@ static void
 process_cleanup (void) {
 	struct thread *curr = thread_current ();
 
+	/* 실행 파일을 닫아 쓰기 막기를 푼다.
+	   exit와 exec 둘 다 여기를 거치므로 여기서 한 번에 처리한다. */
+	if (curr->running_file != NULL) {
+		lock_acquire (&filesys_lock);
+		file_close (curr->running_file);
+		lock_release (&filesys_lock);
+		curr->running_file = NULL;				/* exec 실패 시 여기가 두 번 불려도 다시 닫지 않도록 */
+	}
+
 #ifdef VM
 	supplemental_page_table_kill (&curr->spt);
 #endif
@@ -673,11 +693,15 @@ load (const char *file_name, char *words[], int argc, struct intr_frame *if_) {
 	/* Open executable file. */
 	lock_acquire (&filesys_lock);
 	has_lock = true;
+
 	file = filesys_open (file_name);
+
 	if (file == NULL) {
 		printf ("load: %s: open failed\n", file_name);
 		goto done;
 	}
+
+	file_deny_write (file);
 
 	/* Read and verify executable header. */
 	if (file_read (file, &ehdr, sizeof ehdr) != sizeof ehdr
@@ -756,10 +780,20 @@ load (const char *file_name, char *words[], int argc, struct intr_frame *if_) {
 	success = true;
 
 done:
-	/* We arrive here whether the load is successful or not. */
-	file_close (file);
-	if (has_lock)
+	/* 성공하면 실행 중에 쓰기를 계속 막아야 하므로 닫지 않고 running_file에 남겨 둔다.
+	   (file_close가 쓰기 막기를 풀기 때문이다. 닫는 건 process_cleanup에서 한다.)
+	   실패하면 실행할 프로그램이 없으니 바로 닫는다. */
+	if (success) {
+		t->running_file = file;
+	}
+	else {
+		file_close (file);
+	}
+
+	if (has_lock) {
 		lock_release (&filesys_lock);
+	}
+
 	return success;
 }
 

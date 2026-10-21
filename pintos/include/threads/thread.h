@@ -122,6 +122,8 @@ struct thread {
    struct list children;
    /* 자식으로서 부모 줄에 걸려 있는 나의 자식 정보 */
    struct child_info *my_info;
+   /* 열어 둔 실행 파일을 저장하는 곳 */
+   struct file *running_file;
 #endif
 #ifdef VM
 	/* 스레드가 가진 가상 메모리 전체에 대한 테이블. */
