@@ -1,3 +1,7 @@
+/* 시스템 콜을 받아서 처리하는 곳.
+   잘못된 포인터나 fd를 넘기면 exit(-1)로 끝내고,
+   요청은 맞는데 실패한 거면(없는 파일 열기 등) -1이나 false를 돌려준다. */
+
 #include "userprog/syscall.h"
 #include <stdio.h>
 #include <limits.h>
@@ -40,21 +44,20 @@ static int sys_exec (const char *cmd_line);
 static struct file *fd_to_file (int fd);
 void syscall_handler (struct intr_frame *);
 
-/* System call.
- *
- * Previously system call services was handled by the interrupt handler
- * (e.g. int 0x80 in linux). However, in x86-64, the manufacturer supplies
- * efficient path for requesting the system call, the `syscall` instruction.
- *
- * The syscall instruction works by reading the values from the the Model
- * Specific Register (MSR). For the details, see the manual. */
+/* 시스템 콜.
 
-#define MSR_STAR 0xc0000081         /* Segment selector msr */
-#define MSR_LSTAR 0xc0000082        /* Long mode SYSCALL target */
-#define MSR_SYSCALL_MASK 0xc0000084 /* Mask for the eflags */
+   예전에는 시스템 콜을 인터럽트 핸들러가 처리했다 (예: 리눅스의 int 0x80).
+   x86-64에서는 더 빠른 syscall 명령을 쓴다.
+   syscall 명령은 MSR(Model Specific Register) 값을 읽어서 동작한다.
+   자세한 건 매뉴얼 참고. */
 
-/* 파일 시스템은 동기화가 안 되어 있으므로, 
-파일 시스템 함수 호출을 감싸는 전역 lock. */
+#define MSR_STAR 0xc0000081         /* 세그먼트 셀렉터 MSR */
+#define MSR_LSTAR 0xc0000082        /* syscall 명령이 점프할 곳 */
+#define MSR_SYSCALL_MASK 0xc0000084 /* eflags 마스크 */
+
+/* 파일 시스템은 동기화가 안 되어 있으므로,
+   파일 시스템 함수 호출을 감싸는 전역 lock.
+   process.c(load 등)에서도 같은 lock을 써야 해서 static이 아니다. */
 struct lock filesys_lock;
 
 void
@@ -63,9 +66,8 @@ syscall_init (void) {
 			((uint64_t)SEL_KCSEG) << 32);
 	write_msr(MSR_LSTAR, (uint64_t) syscall_entry);
 
-	/* The interrupt service rountine should not serve any interrupts
-	 * until the syscall_entry swaps the userland stack to the kernel
-	 * mode stack. Therefore, we masked the FLAG_FL. */
+	/* syscall_entry가 사용자 스택을 커널 스택으로 바꾸기 전에는
+	   인터럽트를 받으면 안 된다. 그래서 FLAG_IF를 막아 둔다. */
 	write_msr(MSR_SYSCALL_MASK,
 			FLAG_IF | FLAG_TF | FLAG_DF | FLAG_IOPL | FLAG_AC | FLAG_NT);
 
@@ -75,7 +77,7 @@ syscall_init (void) {
 /* 현재 프로세스의 열린 파일을 모두 닫고, fd 표 페이지를 돌려준다.
    fd 표는 사용자 프로그램만 process_init에서 받는다.
    fd 표를 받은 적 없는 스레드면(fd_table이 NULL) 아무것도 하지 않는다. */
-void 
+void
 destroy_fd_table (void) {
 	struct thread *t = thread_current ();
 	if (t->fd_table == NULL) {
@@ -96,6 +98,8 @@ destroy_fd_table (void) {
 	t->fd_table = NULL;
 }
 
+/* fork 중인 자식(현재 스레드)에게 부모 PARENT의 열린 파일을 같은 fd 번호로 복제한다.
+   중간에 실패해도 이미 복제한 건 그냥 둔다. 자식이 곧 exit하면서 닫힌다. */
 bool
 duplicate_fd_table (struct thread *parent) {
 	struct thread *child = thread_current ();
@@ -118,17 +122,18 @@ duplicate_fd_table (struct thread *parent) {
 			child->fd_table[fd] = copy;
 		}
 	}
-	
+
 	lock_release (&filesys_lock);
 
 	return true;
 }
 
-/* 사용자가 넘긴 주소가 안전한지 검사한다.
+/* 사용자가 넘긴 주소 하나가 안전한지 검사한다.
    NULL, 커널 주소, 매핑되지 않은 주소면 false를 돌려준다.
    안전하면 true를 돌려준다.
-   TODO: Project 3에서 lazy loading이 들어가면 수정이 필요하다. */
-static bool 
+   TODO: Project 3에서 lazy loading이 들어가면 수정이 필요하다.
+         아직 안 올라온 페이지도 올바른 주소일 수 있다. */
+static bool
 check_address (const void *addr) {
 	if (addr == NULL || !is_user_vaddr (addr) || pml4_get_page(thread_current ()->pml4, addr) == NULL) {
 		return false;
@@ -136,8 +141,9 @@ check_address (const void *addr) {
 	return true;
 }
 
-/* BUFFER부터 SIZE바이트가 걸친 모든 페이지를 페이지마다 한 번씩 검사한다. */
-static bool 
+/* BUFFER부터 SIZE바이트가 걸친 모든 페이지를 페이지마다 한 번씩 검사한다.
+   첫 바이트만 보면 버퍼가 다음 페이지로 넘어가는 경우를 놓친다. */
+static bool
 check_buffer (const void *buffer, size_t size) {
 	if (size == 0)
 		return true;
@@ -156,7 +162,7 @@ check_buffer (const void *buffer, size_t size) {
 /* 이름이 FILE인 파일을 열고, 새 fd를 돌려준다.
    파일이 없거나 fd 표에 빈 칸이 없으면 -1을 돌려준다.
    이름이 잘못된 주소면 프로세스를 exit(-1)로 끝낸다. */
-static int 
+static int
 sys_open (const char *file) {
 	/* 파일 이름이 안전한 주소인지 lock 잡기 전에 검사한다. */
 	if (!check_string (file)) {
@@ -202,25 +208,26 @@ sys_open (const char *file) {
 }
 
 /* FD에 해당하는 열린 파일을 닫는다.
-   범위를 벗어난 FD일 경우 프로세스를 종료시킨다. */
+   범위를 벗어난 FD거나 빈 칸이면 프로세스를 종료시킨다. */
 static void
 sys_close (int fd) {
 	if (!fd_to_file (fd))
 		sys_exit (-1);
-	
+
 	struct thread *t = thread_current ();
-	
+
 	lock_acquire (&filesys_lock);
-	
+
+	/* 칸을 비워야 close를 두 번 했을 때 fd_to_file에서 걸린다. */
 	file_close (t->fd_table[fd]);
 	t->fd_table[fd] = NULL;
-	
+
 	lock_release (&filesys_lock);
 }
 
 /* FD에 해당하는 열린 파일을 돌려준다.
    FD가 범위 밖(2 미만, FD_MAX 이상)이거나 빈 칸이면 NULL을 돌려준다.
-   fd 0, 1(콘솔)은 여기서 다루지 않는다. */
+   fd 0, 1(콘솔)은 여기서 다루지 않는다. 그래서 read(1), write(0)도 여기서 걸린다. */
 static struct file *
 fd_to_file (int fd) {
 	struct file **fd_table = thread_current ()->fd_table;
@@ -233,7 +240,7 @@ fd_to_file (int fd) {
 }
 
 /* 문자열 STR을 '\0'까지 따라가며, 첫 글자와 새 페이지에 들어설 때마다 검사한다. */
-static bool 
+static bool
 check_string (const char *str) {
 	const char *p = str;
 
@@ -250,16 +257,16 @@ check_string (const char *str) {
 
 		p++;
 	}
-	return true;
 }
 
 /* Pintos를 종료한다. */
-static void 
+static void
 sys_halt (void) {
 	power_off ();
 }
 
-/* FD를 통해 읽은 내용을 BUFFER에 LENGTH바이트를 쓰고, 실제로 쓴 바이트 수를 돌려준다.
+/* FD에서 LENGTH바이트를 읽어 BUFFER에 담고, 실제로 읽은 바이트 수를 돌려준다.
+   fd 0이면 키보드에서 읽는다.
    버퍼가 잘못된 주소면 프로세스를 exit(-1)로 끝낸다. */
 static int
 sys_read (int fd, void *buffer, unsigned length) {
@@ -274,11 +281,11 @@ sys_read (int fd, void *buffer, unsigned length) {
 		}
 		return length;
 	}
-	
+
 	if (!fd_to_file (fd)) {
 		sys_exit (-1);
 	}
-	
+
 	lock_acquire (&filesys_lock);
 	int size = file_read (thread_current ()->fd_table[fd], buffer, length);
 	lock_release (&filesys_lock);
@@ -287,18 +294,20 @@ sys_read (int fd, void *buffer, unsigned length) {
 }
 
 /* FD에 BUFFER의 LENGTH바이트를 쓰고, 실제로 쓴 바이트 수를 돌려준다.
+   쓰기가 막힌 파일(실행 중인 프로그램 파일)이면 0이 나온다.
    버퍼가 잘못된 주소면 프로세스를 exit(-1)로 끝낸다. */
-static int 
+static int
 sys_write (int fd, const void *buffer, unsigned length) {
 	if (!check_buffer (buffer, length)) {
 		sys_exit (-1);
 	}
 
+	/* putbuf는 한 번에 불러야 다른 프로세스 출력이랑 안 섞인다. */
 	if (fd == 1) {
 		putbuf (buffer, length);
 		return length;
 	}
-	
+
 	if (!fd_to_file (fd)) {
 		sys_exit (-1);
 	}
@@ -330,6 +339,8 @@ sys_seek (int fd, unsigned position) {
 		sys_exit (-1);
 	}
 
+	/* off_t는 int라서 INT_MAX보다 크면 음수가 되고,
+	   file_seek의 ASSERT (new_pos >= 0)에 걸려 패닉이 난다. */
 	if (position > INT_MAX) {
 		position = INT_MAX;
 	}
@@ -353,8 +364,8 @@ sys_tell (int fd) {
 }
 
 /* 이름이 FILE이고 크기가 INITIAL_SIZE인 파일을 만든다. 성공하면 true.
-이름이 잘못된 주소면 프로세스를 exit(-1)로 끝낸다. */
-static bool 
+   이름이 잘못된 주소면 프로세스를 exit(-1)로 끝낸다. */
+static bool
 sys_create (const char *file, unsigned initial_size) {
 	/* lock 잡기 전에 파일 이름 검사 */
 	if (!check_string (file)) {
@@ -374,8 +385,9 @@ sys_create (const char *file, unsigned initial_size) {
 }
 
 /* 이름이 FILE인 파일을 지운다. 성공하면 true, 실패하면 false.
+   열려 있어도 지울 수 있다. 실제로는 마지막 사람이 닫을 때 지워진다.
    이름이 잘못된 주소면 프로세스를 exit(-1)로 끝낸다. */
-static bool 
+static bool
 sys_remove (const char *file) {
 	/* lock 잡기 전에 파일 이름 검사 */
 	if (!check_string (file)) {
@@ -394,33 +406,40 @@ sys_remove (const char *file) {
 	return result;
 }
 
-/* 현재 프로세스를 종료 코드 STATUS로 끝낸다. */
-static void 
+/* 현재 프로세스를 종료 코드 STATUS로 끝낸다.
+   메시지 출력과 부모에게 전하는 건 process_exit가 한다. */
+static void
 sys_exit (int status) {
 	thread_current ()->exit_status = status;
 	thread_exit ();
 }
 
-static tid_t 
+/* 자식을 만든다. 부모는 자식 tid, 자식은 0을 받는다.
+   F(사용자 레지스터)를 넘겨야 자식이 부모와 같은 곳부터 실행할 수 있다. */
+static tid_t
 sys_fork (const char *thread_name, struct intr_frame *f) {
 	if (!check_string (thread_name)) {
 		sys_exit (-1);
 	}
-	
+
 	return process_fork (thread_name, f);
 }
 
-static int 
+/* 실제 일은 process_wait가 한다. */
+static int
 sys_wait (tid_t pid) {
 	return process_wait (pid);
 }
 
+/* 현재 프로세스를 CMD_LINE 프로그램으로 바꾼다. 성공하면 안 돌아온다.
+   CMD_LINE은 사용자 메모리라 process_exec가 지워 버리니까 먼저 커널 페이지에 복사한다.
+   복사한 페이지는 process_exec가 반납한다. */
 static int
 sys_exec (const char *cmd_line) {
 	if (!check_string (cmd_line)) {
 		sys_exit (-1);
 	}
-	
+
 	char *cmd_copy = palloc_get_page (0);
 
 	if (!cmd_copy) {
@@ -432,11 +451,13 @@ sys_exec (const char *cmd_line) {
 	if (process_exec (cmd_copy) == -1) {
 		sys_exit (-1);
 	}
-	
+
 	NOT_REACHED ();
 }
 
-/* The main system call interface */
+/* 시스템 콜 입구.
+   번호는 f->R.rax, 인자는 rdi, rsi, rdx 순서로 들어 있다.
+   결과를 f->R.rax에 넣으면 사용자가 반환값으로 받는다. */
 void
 syscall_handler (struct intr_frame *f) {
 	switch (f->R.rax) {
@@ -452,7 +473,7 @@ syscall_handler (struct intr_frame *f) {
 								  (unsigned) f->R.rdx);
 			break;
 		case SYS_WRITE:
-			f->R.rax = sys_write ((int) f->R.rdi, 
+			f->R.rax = sys_write ((int) f->R.rdi,
 								  (const void *) f->R.rsi,
 								  (unsigned) f->R.rdx);
 			break;
@@ -467,7 +488,7 @@ syscall_handler (struct intr_frame *f) {
 			f->R.rax = sys_tell ((int) f->R.rdi);
 			break;
 		case SYS_CREATE:
-			f->R.rax = sys_create ((const char *) f->R.rdi, 
+			f->R.rax = sys_create ((const char *) f->R.rdi,
 								   (unsigned) f->R.rsi);
 			break;
 		case SYS_REMOVE:

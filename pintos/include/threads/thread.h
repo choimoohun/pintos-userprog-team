@@ -79,15 +79,18 @@ typedef int tid_t;
    thread_current()는 실행 중인 스레드의 magic 멤버가 THREAD_MAGIC인지
    검사하는데, 스택이 넘치면 보통 이 값이 바뀌어서 assertion이 터진다. */
 
+/* 부모와 자식이 같이 쓰는 자식 정보 상자.
+   자식 struct thread는 exit하면 사라지는데 부모는 그 뒤에 wait로 종료 상태를 읽어야 해서,
+   따로 malloc해서 둔다. 둘 중 나중에 떠나는 쪽이 지운다. */
 struct child_info {
-   tid_t tid;                           /* pid */
-   int exit_status;                     /* 종료 상태 */
-   bool fork_success;                   /* fork 성공 여부 */
-   struct semaphore fork_sema;          /* fork용 세마포어 */
-   struct semaphore wait_sema;          /* wait용 세마포어 */
-   int ref_cnt;                         /* 남은 사용자 수 */
-   struct lock ref_lock;                /* 남은 사용자 수를 지키는 lock */
-   struct list_elem elem;               /* 부모 줄에 걸리는 elme */
+	tid_t tid;                          /* pid */
+	int exit_status;                    /* 종료 상태 (처음은 -1) */
+	bool fork_success;                  /* fork 성공 여부 */
+	struct semaphore fork_sema;         /* fork용 세마포어 */
+	struct semaphore wait_sema;         /* wait용 세마포어 */
+	int ref_cnt;                        /* 남은 사용자 수 */
+	struct lock ref_lock;               /* 남은 사용자 수를 지키는 lock */
+	struct list_elem elem;              /* 부모 줄에 걸리는 elem */
 };
 
 /* elem 멤버는 두 가지 용도로 쓴다.
@@ -115,15 +118,15 @@ struct thread {
 #ifdef USERPROG
 	/* userprog/process.c가 관리하는 필드. */
 	uint64_t *pml4;                     /* 4단계 페이지 맵 (PML4). */
-   int exit_status;                    /* 종료 코드 */
-   /* fd 표 (palloc으로 받은 페이지). fd_table[fd] = 열린 파일. */
-   struct file **fd_table;
-   /* 부모로서 내 자식 정보들의 줄 */
-   struct list children;
-   /* 자식으로서 부모 줄에 걸려 있는 나의 자식 정보 */
-   struct child_info *my_info;
-   /* 열어 둔 실행 파일을 저장하는 곳 */
-   struct file *running_file;
+	int exit_status;                    /* 종료 코드 */
+	/* fd 표 (palloc으로 받은 페이지). fd_table[fd] = 열린 파일. 0, 1은 콘솔이라 2번부터 쓴다. */
+	struct file **fd_table;
+	/* 부모로서 내 자식 정보들의 줄 */
+	struct list children;
+	/* 자식으로서 부모 줄에 걸려 있는 나의 자식 정보 */
+	struct child_info *my_info;
+	/* 열어 둔 실행 파일. 쓰기를 막아 두려고 끝날 때까지 안 닫는다. */
+	struct file *running_file;
 #endif
 #ifdef VM
 	/* 스레드가 가진 가상 메모리 전체에 대한 테이블. */
