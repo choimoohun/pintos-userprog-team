@@ -577,6 +577,7 @@ init_thread (struct thread *t, const char *name, int priority) {
 	t->fd_table = NULL;			/* fd_table을 NULL로 */
 	list_init (&t->children);
 	t->my_info = NULL;
+	t->running_file = NULL;
 #endif
 }
 
